@@ -1,0 +1,11 @@
+{
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32c6"
+  },
+  "clangd.path": "C:\\Users\\lubii\\.espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=c:\\Users\\lubii\\lab_ruby\\MPLR2025-experiments\\cl\\pedometer\\build"
+  ]
+}

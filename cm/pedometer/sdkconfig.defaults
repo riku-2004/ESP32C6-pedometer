@@ -1,0 +1,7 @@
+# cm/pedometer - Main Processor Only (no ULP)
+
+# Set log level to Info for debugging
+CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
+CONFIG_BOOTLOADER_LOG_LEVEL=3
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_DEFAULT_LEVEL=3
