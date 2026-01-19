@@ -22,7 +22,8 @@
 //#include "gather_sht30.c"
 //#include "gps_acc.c"
 //#include "breathingled.c"
-#include "tofsense.c"
+//#include "tofsense.c"
+#include "pedometer.c"
 
 /////
 

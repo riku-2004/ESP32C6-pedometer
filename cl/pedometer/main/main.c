@@ -17,12 +17,12 @@ static void lp_core_init(void)
 
 static void lp_i2c_init(void)
 {
-    /* Initialize LP I2C with default configuration */
+    /* Pullup Enabled! */
     const lp_core_i2c_cfg_t i2c_cfg = {
         .i2c_pin_cfg.sda_io_num = GPIO_NUM_6,
         .i2c_pin_cfg.scl_io_num = GPIO_NUM_7,
-        .i2c_pin_cfg.sda_pullup_en = false,
-        .i2c_pin_cfg.scl_pullup_en = false,
+        .i2c_pin_cfg.sda_pullup_en = true,   // ENABLED
+        .i2c_pin_cfg.scl_pullup_en = true,   // ENABLED
         .i2c_timing_cfg.clk_speed_hz = 20000,
         LP_I2C_DEFAULT_SRC_CLK()
     };
@@ -31,12 +31,8 @@ static void lp_i2c_init(void)
 
 // ULP側で定義された変数
 extern volatile uint32_t ulp_step_count;
-extern volatile int32_t ulp_debug_x;
-extern volatile int32_t ulp_debug_y;
-extern volatile int32_t ulp_debug_z;
 extern volatile int32_t ulp_debug_mag;
-extern volatile uint32_t ulp_read_error_count;
-extern volatile uint32_t ulp_read_success_count;
+extern volatile int32_t ulp_debug_filtered;
 
 void app_main(void)
 {
@@ -50,22 +46,19 @@ void app_main(void)
       .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
     };
 
-    lp_i2c_init();
+    lp_i2c_init(); // I2C Init with Pullups
     lp_core_init();
 
-    printf("Starting Pedometer on LP Core (Debug Mode)...\n");
+    printf("Starting Pedometer on LP Core (Pullups Enabled, Busy Wait)...\n");
 
     ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
 
     rtc_gpio_set_level(1, 0);
 
     while(1) {
-        // デバッグ出力（エラーカウンタ追加）
-        printf("Steps: %lu, Mag: %ld, XYZ: (%ld, %ld, %ld), OK: %lu, ERR: %lu\n", 
-               ulp_step_count, ulp_debug_mag, ulp_debug_x, ulp_debug_y, ulp_debug_z,
-               ulp_read_success_count, ulp_read_error_count);
+        printf("Steps: %lu, Mag: %ld, Filt: %ld\n", 
+               ulp_step_count, ulp_debug_mag, ulp_debug_filtered);
         
-        // 更新確認のため少し速く (1秒ごと)
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
