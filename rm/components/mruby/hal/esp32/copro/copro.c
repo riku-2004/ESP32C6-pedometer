@@ -95,7 +95,7 @@ static void copro_GPIOset(struct VM *vm, mrb_value v[], int argc) {
   SET_BOOL_RETURN(rtc_gpio_set_level(mrbc_integer(GET_ARG(1)), mrbc_type(GET_ARG(2)) != MRBC_TT_FALSE));
 }
 
-#define DELAY_MS_LIGHTSLEEP CONFIG_IDF_TARGET_ESP32C6
+#define DELAY_MS_LIGHTSLEEP 0 // CONFIG_IDF_TARGET_ESP32C6
 static void copro_delayUs(struct VM *vm, mrb_value v[], int argc) {
   if(argc != 1) mrbc_raise(vm, NULL, "1 argument is required.");
   if(mrbc_type(GET_ARG(1)) != MRBC_TT_INTEGER) mrbc_raise(vm, NULL, "Invalid type. (arg[0])");

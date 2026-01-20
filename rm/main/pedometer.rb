@@ -3,6 +3,24 @@
 # Lightweight Dynamic Threshold using EMA
 #
 
+class I2C
+  def initialize()
+    puts "[rb] I2C.new start"
+    Copro.i2cinit()
+    puts "[rb] I2C.new done"
+  end
+  def read(addr, len, reg = nil)
+    if reg
+      Copro.i2cwrite(addr, [reg])
+      Copro.delayMs(1)
+    end
+    Copro.i2cread(addr, len)
+  end
+  def write(addr, data)
+    Copro.i2cwrite(addr, data)
+  end
+end
+
 class ADXL367
   attr_reader :x, :y, :z
 
@@ -28,9 +46,9 @@ class ADXL367
     # Read 6 bytes starting from 0x0E (XDATA_L)
     data = @i2c.read(0x1D, 6, 0x0E)
     if data
-      @x = conv(data[0], data[1])
-      @y = conv(data[2], data[3])
-      @z = conv(data[4], data[5])
+      @x = conv(data.getbyte(0), data.getbyte(1))
+      @y = conv(data.getbyte(2), data.getbyte(3))
+      @z = conv(data.getbyte(4), data.getbyte(5))
       return true
     end
     return false
@@ -150,14 +168,19 @@ end
 i2c = I2C.new
 adxl = ADXL367.new(i2c)
 ped = Pedometer.new
+debug_cnt = 0
 
-puts "Starting Pedometer (Ruby)"
+puts "Starting Pedometer (Ruby/rm)"
 
 while true
   if adxl.read
     mag = ped.process(adxl.x, adxl.y, adxl.z)
-    # Debug output ~1Hz (approx)
-    # puts "Mag: #{mag}, Steps: #{ped.step_count}" if rand(50) == 0
+    debug_cnt += 1
+    if debug_cnt >= 50  # 1秒ごと (50Hz)
+      puts "Mag: #{mag}, Steps: #{ped.step_count}"
+      debug_cnt = 0
+    end
   end
   Copro.delayMs(20) # 50Hz
 end
+
