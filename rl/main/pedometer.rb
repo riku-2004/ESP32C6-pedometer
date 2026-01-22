@@ -43,7 +43,18 @@ class ADXL
   end
 
   def conv(ary, base)
-    ((ary.getbyte(base) << 26) >> 18) + ary.getbyte(base+1)
+    val = (ary.getbyte(base) << 8) | ary.getbyte(base+1)
+    val = val >> 2
+    if (val & 0x2000) != 0
+      val = val - 16384 # Handle 14-bit sign (bit 13 set means negative)
+      # In C: val |= 0xFFFFC000. In Ruby, just subtract 16384 from positive interpretation?
+      # Wait. 14-bit signed. range -8192 to 8191.
+      # If val (0..16383) has bit 13 (8192) set.
+      # e.g. 8192 (0x2000) -> -8192. 
+      # e.g. 16383 (0x3FFF) -> -1.
+      # So val - 16384 is correct.
+    end
+    val
   end
 
   def read()
@@ -73,17 +84,18 @@ consec_steps = 0
 gpio_state = false
 
 # === Setup ===
-Copro.gpio_output 1
-Copro.gpio(1, true)
+# Copro.gpio_output 1
+# Copro.gpio(1, true)
+# Copro.delayMs(100) # Wait for sensor to boot
 i2c = I2C.new()
 acc = ADXL.new(i2c)
 acc.on()
-Copro.gpio(1, false)
+# Copro.gpio(1, false)
 
 puts "Starting Pedometer (rl) - Unified Algorithm"
 
 # === Main Loop (LP Core) ===
-Copro.sleep_and_run do
+# Copro.sleep_and_run do
   while true do
     v = acc.read()
     if v
@@ -127,23 +139,25 @@ Copro.sleep_and_run do
           end
           
           # Validation
+          # p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
           if peak_diff > MIN_SENSITIVITY
             if reg_mode
               step_count += 1
               gpio_state = !gpio_state
-              Copro.gpio(1, gpio_state)
-              p step_count
+              # Copro.gpio(1, gpio_state)
+              puts "Step! Total: #{step_count}"
             else
               consec_steps += 1
               if consec_steps >= REGULATION_STEPS
                 reg_mode = true
                 step_count += consec_steps
                 consec_steps = 0
-                p step_count
+                puts "Regulation Mode ON! Steps: #{step_count}"
               end
             end
           else
             # Noise
+            # puts "Noise ignore: #{peak_diff}"
             consec_steps = 0 if !reg_mode
           end
           
@@ -160,7 +174,7 @@ Copro.sleep_and_run do
         consec_steps = 0 if !reg_mode
       end
     end
-
+    
     Copro.delayMs(20) # 50Hz
   end
-end
+# end

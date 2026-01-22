@@ -46,19 +46,20 @@ class ADXL367
     # Read 6 bytes starting from 0x0E (XDATA_L)
     data = @i2c.read(0x1D, 6, 0x0E)
     if data
-      @x = conv(data.getbyte(0), data.getbyte(1))
-      @y = conv(data.getbyte(2), data.getbyte(3))
-      @z = conv(data.getbyte(4), data.getbyte(5))
+
+      @x = conv(data, 0)
+      @y = conv(data, 2)
+      @z = conv(data, 4)
       return true
     end
     return false
   end
 
-  def conv(lsb, msb)
-    val = (msb << 8) | lsb
-    val = val >> 2 # 14bit
+  def conv(ary, base)
+    val = (ary.getbyte(base) << 8) | ary.getbyte(base+1)
+    val = val >> 2
     if (val & 0x2000) != 0
-      val = val - 16384 # 2's complement
+      val = val - 16384 # Handle 14-bit sign (bit 13 set means negative)
     end
     val
   end
@@ -124,10 +125,13 @@ class Pedometer
           @dynamic_thresh = (@dynamic_thresh * 3 + mid_point) / 4
         end
         
-        # Step validation
+        # Validation
+        # p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
         if peak_diff > MIN_SENSITIVITY
           if @reg_mode
             @step_count += 1
+            # gpio_state = !gpio_state
+            # Copro.gpio(1, gpio_state)
             puts "Step! Total: #{@step_count}"
           else
             @consec_steps += 1
@@ -140,9 +144,8 @@ class Pedometer
           end
         else
           # Noise
-          unless @reg_mode
-            @consec_steps = 0
-          end
+          # puts "Noise ignore: #{peak_diff}"
+          @consec_steps = 0 if !@reg_mode
         end
         
         @looking_for_max = true

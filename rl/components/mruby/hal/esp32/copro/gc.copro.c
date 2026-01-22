@@ -13,6 +13,7 @@
 #include "value.copro.h"
 #include "string.h"
 #include <stdio.h>
+#include "alloc.h"
 #define MRBC_GC_B8_ALIGN_REGION_START MRBC_COPRO_GC_B8_ALIGN_REGION_START
 #define MRBC_GC_B8_ALIGN_START MRBC_COPRO_GC_B8_ALIGN_START
 #define MRBC_GC_B16_ALIGN_REGION_START MRBC_COPRO_GC_B16_ALIGN_REGION_START
@@ -154,66 +155,5 @@ void mrbcopro_gc_clear(void) {
 }
 
 void * mrbcopro_gc_alloc(size_t length, int special) {
-  int retried = 0;
-  void * retVal = 0;
-  retry:
-  size_t len = 8; // bytes
-  if(length <= 32) {
-    for(int i = 0; i <= 2; i++, len *= 2) {
-      if(len < length) continue;
-      size_t ctrl = (size_t)heaps[i].ctrl;
-      size_t rgon = (size_t)heaps[i].region;
-      for(uint32_t * pj = (uint32_t *)(ctrl + ((rgon - ctrl) / 3 * 2)),
-                  * pfj = (uint32_t *)(ctrl + ((rgon - ctrl) / 3)), j = 0;
-          (size_t)pj < rgon; j+=32, ++pj, ++pfj) {
-        uint32_t a = *pj;
-        if(a == (uint32_t)(-1)) continue;
-        for(int k = 0; k < 32; ++k) {
-          // leading zeros can be used.
-          if((a&(1<<k))!=0) continue; // used.
-          if(special <= 1) {
-            *pj = a | (1 << k);
-            if(special == 0)
-              *pfj |= (1 << k); // Frozen bit!
-          }
-          retVal = (void *)(rgon + len*(j+k));
-          goto ret;
-        }
-      }
-    }
-  }
-  len = (length + ((MRBC_GC_BIGGER_ALIGN * 4) - 1)) / (MRBC_GC_BIGGER_ALIGN * 4);
-  const size_t maxCount = ((size_t)(&mrbc_gc_space[MRBC_GC_MAX]) - (size_t)(&mrbc_gc_space[MRBC_GC_BIGGER_REGION_START]))/(MRBC_GC_BIGGER_ALIGN*sizeof(uint32_t));
-  for(size_t e = 0; e < maxCount;) {
-    size_t ej = e % 32, ek = e / 32;
-    if(((mrbc_gc_space[MRBC_GC_BIGGER_START + (MRBC_GC_BIGGER_COUNT / 32 * 2) + ek] >> ej) & 1) != 0) { // it's used.
-      e++; continue;
-    }
-    size_t i = e;
-    for(; i < maxCount; ++i) {
-      size_t ij = i % 32, ik = i / 32, ikk = MRBC_GC_BIGGER_START + (MRBC_GC_BIGGER_COUNT / 32 * 2) + ik;
-      if(((mrbc_gc_space[ikk] >> ij) & 1) != 0) break; // confliction...
-      if(i - e + 1 >= len) { // gotcha!
-        if(special <= 1) {
-          for(size_t j = e; j <= i; ++j) 
-            mrbc_gc_space[MRBC_GC_BIGGER_START + (MRBC_GC_BIGGER_COUNT / 32 * 2) + (j / 32)]
-              |= 1 << (j % 32);
-          mrbc_gc_space[MRBC_GC_BIGGER_START + (MRBC_GC_BIGGER_COUNT / 32 * 3) + ek] |= 1 << ej;
-          if(special == 0)
-            mrbc_gc_space[MRBC_GC_BIGGER_START + (MRBC_GC_BIGGER_COUNT / 32) + ek] |= 1 << ej; // Frozen bit!
-        }
-        retVal =  (void *)((size_t)&mrbc_gc_space[MRBC_GC_BIGGER_REGION_START] + (MRBC_GC_BIGGER_ALIGN*sizeof(uint32_t)*e));
-        goto ret;
-      }
-    }
-    e = i;
-  }
-  if(retried) return 0;
-// dogc:
-  retried = 1;
-  mrbcopro_gc_gc();
-  goto retry;
-ret:
-  memset(retVal, 0, len);
-  return retVal;
+    return mrbc_raw_alloc(length);
 }

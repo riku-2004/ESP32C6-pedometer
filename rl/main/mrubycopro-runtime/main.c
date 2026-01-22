@@ -250,21 +250,21 @@ extern void string_getbyte(void);
 void read_barrier(void);
 void object_new(void);
 void imalive(void) {
-  ((f)debugout)();
-  ((f)fallback)();
-  ((f)read_barrier)();
-  ((f)mrbc_gc_alloc)();
-  ((f)copro_GPIOget)();
-  ((f)copro_GPIOset)();
-  ((f)copro_I2Cread)();
-  ((f)copro_I2Cwrite)();
-  ((f)copro_delayMs)();
-  ((f)array_get)();
-  ((f)string_getbyte)();
-  ((f)array_set)();
-  ((f)copro_GPIOpulseIn)();
+  ((f)(void *)debugout)();
+  ((f)(void *)fallback)();
+  ((f)(void *)read_barrier)();
+  ((f)(void *)mrbc_gc_alloc)();
+  ((f)(void *)copro_GPIOget)();
+  ((f)(void *)copro_GPIOset)();
+  ((f)(void *)copro_I2Cread)();
+  ((f)(void *)copro_I2Cwrite)();
+  ((f)(void *)copro_delayMs)();
+  ((f)(void *)array_get)();
+  ((f)(void *)string_getbyte)();
+  ((f)(void *)array_set)();
+  ((f)(void *)copro_GPIOpulseIn)();
 #if !CONFIG_IDF_TARGET_ESP32C6
-  ((f)copro_delayUs)();
+  ((f)(void *)copro_delayUs)();
 #endif
 }
 
