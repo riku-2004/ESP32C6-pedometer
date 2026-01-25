@@ -61,7 +61,7 @@ class ADXL
     @i2c.write(DEV_ADDR, CMD_FIFO)
     Copro.delayMs(1)
     val = @i2c.read(DEV_ADDR, 6)
-    return nil if val.size == 0
+    return nil if val.nil? || val.size == 0
     ADXLResult.new(conv(val, 0), conv(val, 2), conv(val, 4))
   end
 end
@@ -95,12 +95,15 @@ acc.on()
 puts "Starting Pedometer (rl) - Unified Algorithm"
 
 # === Main Loop (LP Core) ===
-# Copro.sleep_and_run do
+Copro.sleep_and_run do
   while true do
     v = acc.read()
     if v
       # Magnitude
-      mag = v.x.abs + v.y.abs + v.z.abs
+      val_x = v.x.abs
+      val_y = v.y.abs
+      val_z = v.z.abs
+      mag = val_x + val_y + val_z
       
       # EMA LPF
       if ema_mag == 0
@@ -177,4 +180,4 @@ puts "Starting Pedometer (rl) - Unified Algorithm"
     
     Copro.delayMs(20) # 50Hz
   end
-# end
+end

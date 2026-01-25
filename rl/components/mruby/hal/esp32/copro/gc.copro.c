@@ -154,6 +154,18 @@ void mrbcopro_gc_clear(void) {
   }
 }
 
+#include "esp_heap_caps.h"
+
 void * mrbcopro_gc_alloc(size_t length, int special) {
-    return mrbc_raw_alloc(length);
+    void * ptr = heap_caps_malloc(length, MALLOC_CAP_RTCRAM);
+    if(ptr == NULL) {
+      // Fallback or Error?
+      // Try 8-byte alignment?
+      ptr = heap_caps_malloc(length, MALLOC_CAP_RTCRAM | MALLOC_CAP_8BIT);
+    }
+    return ptr;
+}
+
+void mrbcopro_gc_free(void * ptr) {
+    if(ptr) free(ptr);
 }

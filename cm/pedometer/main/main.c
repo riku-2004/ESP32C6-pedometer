@@ -161,9 +161,11 @@ static void process_sample(int32_t mag) {
             if (peak_diff > MIN_SENSITIVITY) {
                 if (reg_mode) {
                     step_count++;
+                    ESP_LOGI(TAG, "Step! Total: %lu", step_count);
+                    
                     gpio_state = !gpio_state;
                     gpio_set_level(STEP_MARKER_GPIO, gpio_state);
-                    ESP_LOGI(TAG, "Step! Total: %lu", step_count);
+
                 } else {
                     consec_steps++;
                     if (consec_steps >= REGULATION_STEPS) {

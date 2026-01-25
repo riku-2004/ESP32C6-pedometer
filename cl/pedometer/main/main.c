@@ -33,32 +33,49 @@ static void lp_i2c_init(void)
 extern volatile uint32_t ulp_step_count;
 extern volatile int32_t ulp_debug_mag;
 extern volatile int32_t ulp_debug_filtered;
+extern volatile int32_t ulp_debug_peak_diff;
+extern volatile uint32_t ulp_debug_cycles;
 
 void app_main(void)
 {
-    rtc_gpio_init(1);
-    rtc_gpio_set_direction(1, RTC_GPIO_MODE_OUTPUT_ONLY);
-    rtc_gpio_pulldown_dis(1);
-    rtc_gpio_pullup_dis(1);
-    rtc_gpio_set_level(1, 1);
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
-    ulp_lp_core_cfg_t cfg = {
-      .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
-    };
+    // 電源投入時のみ初期化（タイマーWakeupではLP Coreは継続動作中なので再起動しない）
+    if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
+        rtc_gpio_init(1);
+        rtc_gpio_set_direction(1, RTC_GPIO_MODE_OUTPUT_ONLY);
+        rtc_gpio_pulldown_dis(1);
+        rtc_gpio_pullup_dis(1);
+        rtc_gpio_set_level(1, 1);
 
-    lp_i2c_init(); // I2C Init with Pullups
-    lp_core_init();
+        ulp_lp_core_cfg_t cfg = {
+            .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
+        };
 
-    printf("Starting Pedometer on LP Core (Pullups Enabled, Busy Wait)...\n");
+        lp_i2c_init(); // I2C Init with Pullups
+        lp_core_init();
 
-    ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
+        printf("Starting Pedometer on LP Core (Pullups Enabled)...\n");
 
-    rtc_gpio_set_level(1, 0);
+        ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
 
-    while(1) {
-        printf("Steps: %lu, Mag: %ld, Filt: %ld\n", 
-               ulp_step_count, ulp_debug_mag, ulp_debug_filtered);
-        
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        rtc_gpio_set_level(1, 0);
+    } else {
+        // タイマーまたはULPからのWakeup時
+        // USB再接続のために少し待機
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        printf("\n=== WAKEUP ===\n");
+        printf("Steps: %lu, Cycles: %lu, PeakDiff: %ld\n", 
+               ulp_step_count, ulp_debug_cycles, ulp_debug_peak_diff);
+        printf("Mag: %ld, Filt: %ld\n", 
+               ulp_debug_mag, ulp_debug_filtered);
+        fflush(stdout);
+        vTaskDelay(100 / portTICK_PERIOD_MS); // 出力完了待ち
     }
+
+    // 定期的なタイマーWakeup（30秒ごと）とULPからのWakeupを両方有効化
+    printf("Entering deep sleep (30s timer + LP Core trigger)...\n");
+    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(30 * 1000000)); // 30秒
+    ESP_ERROR_CHECK(esp_sleep_enable_ulp_wakeup());
+    esp_deep_sleep_start();
 }

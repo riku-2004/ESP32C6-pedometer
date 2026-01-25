@@ -196,17 +196,35 @@ static void copro_I2Cinit(struct VM * vm, mrbc_value v[], int argc) {
         LP_I2C_DEFAULT_SRC_CLK()
     };
   ret = lp_core_i2c_master_init(LP_I2C_NUM_0, &i2c_cfg);
-  if(ret) SET_TRUE_RETURN();
+  if(ret == ESP_OK) SET_TRUE_RETURN();
   else SET_FALSE_RETURN();
 }
 
 extern esp_err_t ulp_lp_core_i2c_master_read_from_device(int, uint16_t device_addr, uint8_t * data_r, size_t size, int32_t ticks_to_wait);
 static void copro_I2Cread(struct VM * vm, mrbc_value v[], int argc) {
   int len = GET_INT_ARG(2);
+  if (len <= 0) {
+    SET_NIL_RETURN();
+    return;
+  }
   mrbc_value ret = mrbc_string_new(vm, NULL, len);
+  if (ret.string == NULL || ret.string->data == NULL) {
+    SET_NIL_RETURN();
+    return;
+  }
   ret.string->data[len] = 0;
-  if(ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, GET_INT_ARG(1), ret.string->data, len, -1) != ESP_OK)
-    mrbc_string_clear(&ret);
+  esp_err_t i2c_ret = ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, GET_INT_ARG(1), ret.string->data, len, -1);
+  if(i2c_ret != ESP_OK) {
+    // On error, free the allocated memory properly
+    if (ret.string != NULL) {
+      if (ret.string->data != NULL) {
+        mrbc_raw_free(ret.string->data);
+      }
+      mrbc_raw_free(ret.string);
+    }
+    SET_NIL_RETURN();
+    return;
+  }
   SET_RETURN(ret);
 }
 extern esp_err_t ulp_lp_core_i2c_master_write_to_device(int, uint16_t device_addr, const uint8_t *data_wr, size_t size, int32_t ticks_to_wait);
@@ -285,7 +303,7 @@ extern inline_code_gen_t gen_read32;
 #define NO_TYPECHECK(v) (void *)((size_t)v + 1)
 void mrbc_add_copro_class(struct VM * vm) {
   // mrbcopro_gc_init();
-  // register_gen_compiled();
+  register_gen_compiled();
   mrb_class *my_cls = mrbc_define_class(vm, "Copro", mrbc_class_object);
   mrbc_define_method(vm, my_cls, "write32",copro_write32);
   mrbc_define_method(vm, my_cls, "read32", copro_read32);

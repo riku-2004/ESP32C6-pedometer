@@ -14,14 +14,16 @@
 #define ADXL367_I2C_ADDR 0x1D
 
 /* ===== パラメータ ===== */
-#define MIN_SENSITIVITY 2000   // 最小感度（ノイズ対策）
+#define MIN_SENSITIVITY 2000   // 最小感度（他構成と統一）
 #define STEP_TIMEOUT 50        // 1秒 (50 * 20ms) - ピーク検出タイムアウト
-#define REGULATION_STEPS 4     // レギュレーションモード開始歩数（8など大きくするとメモリ食うかもなので控えめに）
+#define REGULATION_STEPS 4     // レギュレーション開始歩数（他構成と統一）
 
 /* ===== 共有変数 ===== */
 volatile uint32_t step_count = 0;
 volatile int32_t debug_mag = 0;
 volatile int32_t debug_filtered = 0;
+volatile int32_t debug_peak_diff = 0;    // デバッグ用: 最後のピーク差
+volatile uint32_t debug_cycles = 0;      // デバッグ用: ピーク検出サイクル数
 
 /* ===== 内部変数 (極力削減) ===== */
 static int32_t ema_mag = 0;           // マグニチュードのEMA（平滑化用）
@@ -62,16 +64,35 @@ int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
 }
 
 /* ===== センサー初期化 ===== */
+/* ===== センサー初期化 (堅牢化) ===== */
 void sensor_init(void) {
     uint8_t cmd1[] = {0x1F, 0x52}; // Soft Reset
     uint8_t cmd2[] = {0x2C, 0x13}; // Filter Ctl (100Hz)
     uint8_t cmd3[] = {0x2D, 0x02}; // Power Ctl (Measure)
-    lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd1, 2, 500);
+    
+    // Soft Reset
+    if (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd1, 2, 500) != ESP_OK) {
+        ulp_lp_core_wakeup_main_processor(); // Init Fail Warning
+    }
+    delay_ms_busy(100); // Wait longer for reset
+
+    // Filter Ctl
+    int retry = 0;
+    while (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd2, 2, 500) != ESP_OK) {
+        retry++;
+        if (retry > 10) { ulp_lp_core_wakeup_main_processor(); break; }
+        delay_ms_busy(10);
+    }
     delay_ms_busy(10);
-    lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd2, 2, 500);
-    delay_ms_busy(10);
-    lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd3, 2, 500);
-    delay_ms_busy(50);
+
+    // Power Ctl (Measure Mode)
+    retry = 0;
+    while (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd3, 2, 500) != ESP_OK) {
+        retry++;
+        if (retry > 10) { ulp_lp_core_wakeup_main_processor(); break; }
+        delay_ms_busy(10);
+    }
+    delay_ms_busy(100); // Wait for measurement to start
 }
 
 /* ===== 歩数検出ロジック (軽量版) ===== */
@@ -106,6 +127,9 @@ void process_sample(int32_t mag) {
             // ボトム確定、1歩のサイクル完了
             int32_t peak_diff = max_peak - min_peak;
             int32_t mid_point = (max_peak + min_peak) / 2;
+            
+            debug_peak_diff = peak_diff;  // デバッグ用
+            debug_cycles++;                // デバッグ用
             
             // 動的閾値の更新 (EMA)
             if (dynamic_thresh == 0) dynamic_thresh = mid_point;
@@ -145,14 +169,45 @@ void process_sample(int32_t mag) {
 
 int main(void) {
     int32_t x, y, z;
+    int error_count_consecutive = 0;
+    int zero_data_count = 0;
+
+    // 起動待機 (電源安定化)
+    delay_ms_busy(200);
+
     sensor_init();
     
     while (1) {
-        if (sensor_read(&x, &y, &z) == 0) {
+        int ret = sensor_read(&x, &y, &z);
+        if (ret == 0) {
+            error_count_consecutive = 0;
+            
             // 絶対値和
             int32_t mag = abs(x) + abs(y) + abs(z);
             debug_mag = mag;
-            process_sample(mag);
+
+            // データが0 (または重力を検知していない) 場合のチェック
+            // 通常、重力があるため mag は数百以上の値になるはず
+            if (mag < 50) { 
+                zero_data_count++;
+                if (zero_data_count > 50) {
+                    // 1秒間データが来ない -> センサーがStandbyのままか死んでいる
+                    ulp_lp_core_wakeup_main_processor();
+                    zero_data_count = 0;
+                }
+            } else {
+                zero_data_count = 0;
+                process_sample(mag);
+            }
+        } else {
+            // 読み取りエラー
+            error_count_consecutive++;
+            if (error_count_consecutive >= 50) {
+                // 1秒間(20ms * 50)エラーが続いたらメインCPUを起こす
+                // これにより「連続してスパイクが出る」＝「センサーエラー」と判断できる
+                ulp_lp_core_wakeup_main_processor();
+                error_count_consecutive = 0;
+            }
         }
         delay_ms_busy(20); // 50Hz
     }

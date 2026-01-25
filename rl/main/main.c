@@ -49,7 +49,10 @@ static i2c_master_dev_handle_t rm_i2c_dev[8] = {NULL};
 
 /* Wrapper for lp_core_i2c_master_init - called by copro.c */
 esp_err_t lp_core_i2c_master_init(int port, const lp_core_i2c_cfg_t *cfg) {
-    if (rm_i2c_bus != NULL) return ESP_OK;
+    if (rm_i2c_bus != NULL) {
+        printf("[rl] I2C bus already initialized\n");
+        return ESP_OK;
+    }
     printf("[rl] I2C init (GPIO %d/%d)\n", cfg->i2c_pin_cfg.sda_io_num, cfg->i2c_pin_cfg.scl_io_num);
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port = 0, // Explicitly I2C_NUM_0
@@ -59,7 +62,14 @@ esp_err_t lp_core_i2c_master_init(int port, const lp_core_i2c_cfg_t *cfg) {
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
     };
-    return i2c_new_master_bus(&bus_cfg, &rm_i2c_bus);
+    esp_err_t ret = i2c_new_master_bus(&bus_cfg, &rm_i2c_bus);
+    if (ret != ESP_OK) {
+        printf("[rl] I2C bus init failed: %d\n", ret);
+        rm_i2c_bus = NULL; // Ensure it's NULL on failure
+    } else {
+        printf("[rl] I2C bus initialized successfully\n");
+    }
+    return ret;
 }
 
 static i2c_master_dev_handle_t rm_get_dev_handle(uint16_t addr) {
@@ -71,8 +81,18 @@ static i2c_master_dev_handle_t rm_get_dev_handle(uint16_t addr) {
             .scl_speed_hz = 100000,
         };
         // Check bus before adding
-        if (rm_i2c_bus == NULL) return NULL;
-        i2c_master_bus_add_device(rm_i2c_bus, &dev_cfg, &rm_i2c_dev[idx]);
+        if (rm_i2c_bus == NULL) {
+            printf("I2C Error: Bus not initialized (addr=0x%02X)\n", addr);
+            return NULL;
+        }
+        printf("[rl] Adding I2C device 0x%02X (idx=%d)\n", addr, idx);
+        esp_err_t ret = i2c_master_bus_add_device(rm_i2c_bus, &dev_cfg, &rm_i2c_dev[idx]);
+        if (ret != ESP_OK) {
+            printf("I2C Error: Failed to add device 0x%02X: %d\n", addr, ret);
+            rm_i2c_dev[idx] = NULL; // Ensure it's NULL on failure
+            return NULL;
+        }
+        printf("[rl] I2C device 0x%02X added successfully\n", addr);
     }
     return rm_i2c_dev[idx];
 }
@@ -89,13 +109,23 @@ esp_err_t ulp_lp_core_i2c_master_read_from_device(int i2c_num, uint16_t device_a
 }
 
 esp_err_t ulp_lp_core_i2c_master_write_to_device(int i2c_num, uint16_t device_addr, const uint8_t *data_wr, size_t size, int32_t timeout) {
-    i2c_master_dev_handle_t dev = rm_get_dev_handle(device_addr);
-    if (dev == NULL) {
-        printf("I2C Write Error: No Device Handle\n");
+    if (rm_i2c_bus == NULL) {
+        printf("I2C Write Error: Bus not initialized (addr=0x%02X)\n", device_addr);
         return ESP_ERR_INVALID_STATE;
     }
+    i2c_master_dev_handle_t dev = rm_get_dev_handle(device_addr);
+    if (dev == NULL) {
+        printf("I2C Write Error: No Device Handle (addr=0x%02X)\n", device_addr);
+        return ESP_ERR_INVALID_STATE;
+    }
+    printf("[rl] I2C write: addr=0x%02X, size=%d, data[0]=0x%02X\n", device_addr, size, data_wr ? data_wr[0] : 0);
     esp_err_t ret = i2c_master_transmit(dev, data_wr, size, 1000);
-    if(ret != ESP_OK) printf("I2C Write Failed: %d\n", ret);
+    if(ret != ESP_OK) {
+        printf("I2C Write Failed: addr=0x%02X, size=%d, error=%d (ESP_ERR_INVALID_STATE=%d)\n", 
+               device_addr, size, ret, ESP_ERR_INVALID_STATE);
+    } else {
+        printf("[rl] I2C write success: addr=0x%02X\n", device_addr);
+    }
     return ret;
 }
 
@@ -108,40 +138,48 @@ static uint8_t memory_pool[MRBC_MEMORY_SIZE];
 #define CHECK_WAKEUP_OVERHEAD 0
 void app_main(void)
 {
-    // Safety delay to allow USB to enumerate and monitor to attach
-    printf("Booting... Waiting 3 seconds for USB stability...\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    printf("Starting application...\n");
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
-#if CHECK_WAKEUP_OVERHEAD
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-  esp_sleep_enable_timer_wakeup(1000 * 1000);
-  esp_light_sleep_start();
-  esp_sleep_enable_timer_wakeup(1000 * 1000);
-  esp_light_sleep_start();
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-#else
+    if (cause != ESP_SLEEP_WAKEUP_ULP) {
+        // 初回起動時のみ実行
+        printf("Booting rl (mruby on LP Core with Deep Sleep)...\n");
+        vTaskDelay(1000 / portTICK_PERIOD_MS); // Short delay for USB stability
+
 #if CONFIG_IDF_TARGET_ESP32C6
-  // ulp_lp_core_load_binary(bin_start,(bin_end-bin_start));
-  //printf("ulp_lp_core_load_binary: %d\n", ulp_lp_core_load_binary(bin_start,(bin_end-bin_start)));
+        // ULPバイナリをロード
+        ESP_ERROR_CHECK(ulp_lp_core_load_binary(bin_start, (bin_end - bin_start)));
+        printf("ULP binary loaded (%d bytes)\n", (int)(bin_end - bin_start));
 #else
-  // ulp_riscv_load_binary(bin_start,(bin_end-bin_start));
-  //printf("ulp_riscv_load_binary: %d\n", ulp_riscv_load_binary(bin_start,(bin_end-bin_start)));
+        ulp_riscv_load_binary(bin_start, (bin_end - bin_start));
 #endif
-  //printf("size: %d\n", bin_end-bin_start);
-  // esp_sleep_enable_ulp_wakeup();
-  //printf("esp_sleep_enable_ulp_wakeup: %d\n", esp_sleep_enable_ulp_wakeup());
-  mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
-  
-  mrbc_add_copro_class(0);
-  printf("Copro class added\n");
 
-  if( mrbc_create_task(mrbbuf, 0) != NULL ){
-    printf("Task created, running mrbc_run\n");
-    mrbc_run();
-    printf("mrbc_run returned\n");
-  } else {
-    printf("Failed to create task\n");
-  }
-#endif
+        // mruby初期化（I2Cラッパー等のCopro classを登録）
+        mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
+        mrbc_add_copro_class(0);
+        printf("Copro class added (I2C wrappers ready)\n");
+
+        // mrubyタスクを作成して実行開始
+        // ただし、Main Coreでは実行せず、LP Coreで実行させる
+        if (mrbc_create_task(mrbbuf, 0) != NULL) {
+            printf("mruby task created\n");
+            
+            // LP Coreを起動
+            ulp_lp_core_cfg_t cfg = {
+                .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
+            };
+            ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
+            printf("LP Core started\n");
+        } else {
+            printf("Failed to create mruby task\n");
+        }
+    } else {
+        // ULP (LP Core) からのWakeup時
+        printf("Wakeup from LP Core!\n");
+        // ここで step_count などの共有変数を読み取れる（将来の拡張）
+    }
+
+    // ULPからのwakeupを有効化してDeep Sleepに入る
+    printf("Entering Deep Sleep (waiting for LP Core trigger)...\n");
+    ESP_ERROR_CHECK(esp_sleep_enable_ulp_wakeup());
+    esp_deep_sleep_start();
 }

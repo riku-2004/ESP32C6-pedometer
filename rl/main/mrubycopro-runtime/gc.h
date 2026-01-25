@@ -18,7 +18,7 @@
 #else
 #include "value.h"
 #endif
-#define MRBC_GC_MAX 4*1024/4 // 4 KiB
+#define MRBC_GC_MAX 2*1024/4 // 2 KiB
 
 /// Top of the Stack.
 extern void* mrbc_gc_sp_start;
