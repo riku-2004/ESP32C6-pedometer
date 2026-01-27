@@ -22,31 +22,25 @@ end
 
 class ADXL
   DEV_ADDR = 0x1D
-  CMD_MEASURE = [0x2D, 2]
+  CTRL_REG = 0x2D
+  CMD_MEASURE = [CTRL_REG, 2]
+  CMD_STANDBY = [CTRL_REG, 0]
   CMD_SOFTRESET = [0x1f, 0x52]
-  CMD_FILTER = [0x2C, 0x13]
-  CMD_FIFO = [0x0E]
-
+  CMD_FIFO = [0x18]
   def initialize(i2c)
     @i2c = i2c
     @i2c.write(DEV_ADDR, CMD_SOFTRESET)
-    Copro.delayMs(10)
-    @i2c.write(DEV_ADDR, CMD_FILTER)
-    Copro.delayMs(10)
+    @i2c.write(DEV_ADDR, [0x29, 1])
+    @i2c.write(DEV_ADDR, [0x28, 2])
   end
-
   def on()
     @i2c.write(DEV_ADDR, CMD_MEASURE)
-    Copro.delayMs(50)
   end
-
+  def off()
+    @i2c.write(DEV_ADDR, CMD_STANDBY)
+  end
   def conv(ary, base)
-    val = (ary.getbyte(base) << 8) | ary.getbyte(base+1)
-    val = val >> 2
-    if (val & 0x2000) != 0
-      val = val - 16384 
-    end
-    val
+    ((ary.getbyte(base) << 26) >> 18) + ary.getbyte(base+1)
   end
 
   def read()
@@ -140,22 +134,14 @@ Copro.sleep_and_run do
               step_count += 1
               gpio_state = !gpio_state
               # Copro.gpio(1, gpio_state)
-<<<<<<< HEAD
               #puts "Step! Total: #{step_count}"
-=======
-              # puts "Step! Total: #{step_count}"
->>>>>>> a4a48e6ced4fe6926ae6067941a1a7333ebd9590
             else
               consec_steps += 1
               if consec_steps >= REGULATION_STEPS
                 reg_mode = true
                 step_count += consec_steps
                 consec_steps = 0
-<<<<<<< HEAD
                 #puts "Regulation Mode ON! Steps: #{step_count}"
-=======
-                # puts "Regulation Mode ON! Steps: #{step_count}"
->>>>>>> a4a48e6ced4fe6926ae6067941a1a7333ebd9590
               end
             end
           else
