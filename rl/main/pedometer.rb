@@ -148,14 +148,14 @@ Copro.sleep_and_run do
               step_count += 1
               gpio_state = !gpio_state
               # Copro.gpio(1, gpio_state)
-              puts "Step! Total: #{step_count}"
+              #puts "Step! Total: #{step_count}"
             else
               consec_steps += 1
               if consec_steps >= REGULATION_STEPS
                 reg_mode = true
                 step_count += consec_steps
                 consec_steps = 0
-                puts "Regulation Mode ON! Steps: #{step_count}"
+                #puts "Regulation Mode ON! Steps: #{step_count}"
               end
             end
           else

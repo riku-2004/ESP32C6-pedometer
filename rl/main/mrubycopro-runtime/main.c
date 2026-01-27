@@ -77,6 +77,7 @@ void* mrbc_sp_bottom;
 volatile uint16_t stopreason = 0;
 volatile uint16_t ack = 0;
 volatile void * required_object = 0;
+volatile uint32_t step_count_value = 0;
 #define TRANSLATION_TABLE_SIZE 4
 volatile struct {
   void * from;
@@ -188,7 +189,7 @@ void fallback_post(void){ // CHECK GENERATED ASSEMBLY CODE AFTER MODIFICATION!
   stopreason = 0;
   WAIT_FOR_PROCESSOR_WAKEUP();
 #if CONFIG_IDF_TARGET_ESP32C6
-  ulp_lp_core_lp_timer_disable();
+ ulp_lp_core_lp_timer_disable();
 #else
   ulp_riscv_timer_stop();
 #endif

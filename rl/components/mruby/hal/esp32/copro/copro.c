@@ -55,7 +55,7 @@ static void copro_sleepandrun(struct VM *vm, mrb_value v[], int argc)
   int ret = profile(vm, callTop);
   vm->flag_preemption = prev_flag_preemeption;
 
-  // mrbcopro_gc_clear();
+  mrbcopro_gc_clear();
 }
 
 static void copro_GPIOoutput(struct VM *vm, mrb_value v[], int argc) {
@@ -140,7 +140,7 @@ static void copro_GPIOset(struct VM *vm, mrb_value v[], int argc) {
   SET_BOOL_RETURN(rtc_gpio_set_level(mrbc_integer(GET_ARG(1)), mrbc_type(GET_ARG(2)) != MRBC_TT_FALSE));
 }
 
-#define DELAY_MS_LIGHTSLEEP 0 //CONFIG_IDF_TARGET_ESP32C6
+#define DELAY_MS_LIGHTSLEEP CONFIG_IDF_TARGET_ESP32C6
 static void copro_delayUs(struct VM *vm, mrb_value v[], int argc) {
   if(argc != 1) mrbc_raise(vm, NULL, "1 argument is required.");
   if(mrbc_type(GET_ARG(1)) != MRBC_TT_INTEGER) mrbc_raise(vm, NULL, "Invalid type. (arg[0])");
@@ -196,35 +196,17 @@ static void copro_I2Cinit(struct VM * vm, mrbc_value v[], int argc) {
         LP_I2C_DEFAULT_SRC_CLK()
     };
   ret = lp_core_i2c_master_init(LP_I2C_NUM_0, &i2c_cfg);
-  if(ret == ESP_OK) SET_TRUE_RETURN();
+  if(ret) SET_TRUE_RETURN();
   else SET_FALSE_RETURN();
 }
 
 extern esp_err_t ulp_lp_core_i2c_master_read_from_device(int, uint16_t device_addr, uint8_t * data_r, size_t size, int32_t ticks_to_wait);
 static void copro_I2Cread(struct VM * vm, mrbc_value v[], int argc) {
   int len = GET_INT_ARG(2);
-  if (len <= 0) {
-    SET_NIL_RETURN();
-    return;
-  }
   mrbc_value ret = mrbc_string_new(vm, NULL, len);
-  if (ret.string == NULL || ret.string->data == NULL) {
-    SET_NIL_RETURN();
-    return;
-  }
   ret.string->data[len] = 0;
-  esp_err_t i2c_ret = ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, GET_INT_ARG(1), ret.string->data, len, -1);
-  if(i2c_ret != ESP_OK) {
-    // On error, free the allocated memory properly
-    if (ret.string != NULL) {
-      if (ret.string->data != NULL) {
-        mrbc_raw_free(ret.string->data);
-      }
-      mrbc_raw_free(ret.string);
-    }
-    SET_NIL_RETURN();
-    return;
-  }
+  if(ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, GET_INT_ARG(1), ret.string->data, len, -1) != ESP_OK)
+    mrbc_string_clear(&ret);
   SET_RETURN(ret);
 }
 extern esp_err_t ulp_lp_core_i2c_master_write_to_device(int, uint16_t device_addr, const uint8_t *data_wr, size_t size, int32_t ticks_to_wait);
@@ -302,24 +284,24 @@ extern inline_code_gen_t gen_read32;
 // --------
 #define NO_TYPECHECK(v) (void *)((size_t)v + 1)
 void mrbc_add_copro_class(struct VM * vm) {
-  // mrbcopro_gc_init();
+  mrbcopro_gc_init();
   register_gen_compiled();
   mrb_class *my_cls = mrbc_define_class(vm, "Copro", mrbc_class_object);
-  mrbc_define_method(vm, my_cls, "write32",copro_write32);
-  mrbc_define_method(vm, my_cls, "read32", copro_read32);
+  mrbc_define_method_copro(vm, my_cls, "write32",copro_write32, NO_TYPECHECK(gen_write32));
+  mrbc_define_method_copro(vm, my_cls, "read32", copro_read32, NO_TYPECHECK(gen_read32));
   mrbc_define_method(vm, my_cls, "sleep_and_run", copro_sleepandrun);
   mrbc_define_method(vm, my_cls, "gpio_pullnone", copro_pullnone);
   mrbc_define_method(vm, my_cls, "gpio_pulldown", copro_pulldown);
   mrbc_define_method(vm, my_cls, "gpio_pullup", copro_pullup);
   mrbc_define_method(vm, my_cls, "gpio_input", copro_GPIOinput);
   mrbc_define_method(vm, my_cls, "gpio_output", copro_GPIOoutput);
-  mrbc_define_method(vm, my_cls, "pulseIn", copro_GPIOpulseIn);
-  mrbc_define_method(vm, my_cls, "gpio", copro_GPIOset);
-  mrbc_define_method(vm, my_cls, "gpio?", copro_GPIOget);
-  mrbc_define_method(vm, my_cls, "delayMs", copro_delayMs);
-  mrbc_define_method(vm, my_cls, "delayUs", copro_delayUs);
+  mrbc_define_method_copro(vm, my_cls, "pulseIn", copro_GPIOpulseIn, NO_TYPECHECK(ulp_copro_GPIOpulseIn));
+  mrbc_define_method_copro(vm, my_cls, "gpio", copro_GPIOset, NO_TYPECHECK(ulp_copro_GPIOset));
+  mrbc_define_method_copro(vm, my_cls, "gpio?", copro_GPIOget, NO_TYPECHECK(ulp_copro_GPIOget));
+  mrbc_define_method_copro(vm, my_cls, "delayMs", copro_delayMs, NO_TYPECHECK(ulp_copro_delayMs));
+  mrbc_define_method_copro(vm, my_cls, "delayUs", copro_delayUs, NO_TYPECHECK(ulp_copro_delayUs));
   mrbc_define_method(vm, my_cls, "i2cinit", copro_I2Cinit);
-  mrbc_define_method(vm, my_cls, "i2cread", copro_I2Cread);
-  mrbc_define_method(vm, my_cls, "i2cwrite", copro_I2Cwrite);
+  mrbc_define_method_copro(vm, my_cls, "i2cread", copro_I2Cread, NO_TYPECHECK(ulp_copro_I2Cread));
+  mrbc_define_method_copro(vm, my_cls, "i2cwrite", copro_I2Cwrite, NO_TYPECHECK(ulp_copro_I2Cwrite));
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 }

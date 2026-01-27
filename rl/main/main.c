@@ -136,50 +136,28 @@ static uint8_t memory_pool[MRBC_MEMORY_SIZE];
 
 
 #define CHECK_WAKEUP_OVERHEAD 0
+
 void app_main(void)
 {
-    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-
-    if (cause != ESP_SLEEP_WAKEUP_ULP) {
-        // 初回起動時のみ実行
-        printf("Booting rl (mruby on LP Core with Deep Sleep)...\n");
-        vTaskDelay(1000 / portTICK_PERIOD_MS); // Short delay for USB stability
+    // USB安定のための短い待機
+    printf("Booting rl (mruby on LP Core)...\n");
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 #if CONFIG_IDF_TARGET_ESP32C6
-        // ULPバイナリをロード
-        ESP_ERROR_CHECK(ulp_lp_core_load_binary(bin_start, (bin_end - bin_start)));
-        printf("ULP binary loaded (%d bytes)\n", (int)(bin_end - bin_start));
+    // ULPバイナリをロード
+    ulp_lp_core_load_binary(bin_start, (bin_end - bin_start));
 #else
-        ulp_riscv_load_binary(bin_start, (bin_end - bin_start));
+    ulp_riscv_load_binary(bin_start, (bin_end - bin_start));
 #endif
 
-        // mruby初期化（I2Cラッパー等のCopro classを登録）
-        mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
-        mrbc_add_copro_class(0);
-        printf("Copro class added (I2C wrappers ready)\n");
+    esp_sleep_enable_ulp_wakeup();
 
-        // mrubyタスクを作成して実行開始
-        // ただし、Main Coreでは実行せず、LP Coreで実行させる
-        if (mrbc_create_task(mrbbuf, 0) != NULL) {
-            printf("mruby task created\n");
-            
-            // LP Coreを起動
-            ulp_lp_core_cfg_t cfg = {
-                .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
-            };
-            ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
-            printf("LP Core started\n");
-        } else {
-            printf("Failed to create mruby task\n");
-        }
-    } else {
-        // ULP (LP Core) からのWakeup時
-        printf("Wakeup from LP Core!\n");
-        // ここで step_count などの共有変数を読み取れる（将来の拡張）
+    // mruby初期化
+    mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
+    mrbc_add_copro_class(0);
+
+    // mrubyタスクを作成して実行
+    if (mrbc_create_task(mrbbuf, 0) != NULL) {
+        mrbc_run();
     }
-
-    // ULPからのwakeupを有効化してDeep Sleepに入る
-    printf("Entering Deep Sleep (waiting for LP Core trigger)...\n");
-    ESP_ERROR_CHECK(esp_sleep_enable_ulp_wakeup());
-    esp_deep_sleep_start();
 }
