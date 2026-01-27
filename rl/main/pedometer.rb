@@ -1,7 +1,5 @@
-#
-# Pedometer for LP Core (rl) - Unified Algorithm
-# Lightweight Dynamic Threshold using EMA
-#
+
+# Pedometer for LP Core (rl)
 
 class I2C
   def initialize()
@@ -46,13 +44,7 @@ class ADXL
     val = (ary.getbyte(base) << 8) | ary.getbyte(base+1)
     val = val >> 2
     if (val & 0x2000) != 0
-      val = val - 16384 # Handle 14-bit sign (bit 13 set means negative)
-      # In C: val |= 0xFFFFC000. In Ruby, just subtract 16384 from positive interpretation?
-      # Wait. 14-bit signed. range -8192 to 8191.
-      # If val (0..16383) has bit 13 (8192) set.
-      # e.g. 8192 (0x2000) -> -8192. 
-      # e.g. 16383 (0x3FFF) -> -1.
-      # So val - 16384 is correct.
+      val = val - 16384 
     end
     val
   end
@@ -105,7 +97,7 @@ Copro.sleep_and_run do
       val_z = v.z.abs
       mag = val_x + val_y + val_z
       
-      # EMA LPF
+      # 
       if ema_mag == 0
         ema_mag = mag
       else
@@ -148,14 +140,22 @@ Copro.sleep_and_run do
               step_count += 1
               gpio_state = !gpio_state
               # Copro.gpio(1, gpio_state)
+<<<<<<< HEAD
               #puts "Step! Total: #{step_count}"
+=======
+              # puts "Step! Total: #{step_count}"
+>>>>>>> a4a48e6ced4fe6926ae6067941a1a7333ebd9590
             else
               consec_steps += 1
               if consec_steps >= REGULATION_STEPS
                 reg_mode = true
                 step_count += consec_steps
                 consec_steps = 0
+<<<<<<< HEAD
                 #puts "Regulation Mode ON! Steps: #{step_count}"
+=======
+                # puts "Regulation Mode ON! Steps: #{step_count}"
+>>>>>>> a4a48e6ced4fe6926ae6067941a1a7333ebd9590
               end
             end
           else
@@ -181,3 +181,5 @@ Copro.sleep_and_run do
     Copro.delayMs(20) # 50Hz
   end
 end
+
+
