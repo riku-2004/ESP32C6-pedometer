@@ -21,7 +21,7 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 #endif
-#define MRBC_COPRO_GC_MAX 4*1024/4 // 1024
+#define MRBC_COPRO_GC_MAX 2*1024/4 // 2 KiB (must match gc.h MRBC_GC_MAX)
 
 /// Managed Memory Space
 extern uint32_t ulp_mrbc_gc_space[MRBC_COPRO_GC_MAX];

@@ -43,6 +43,9 @@ mrbcopro_heap_info heaps[5] = {
 
 void mrbcopro_gc_init(void) {
   if(heaps[4].region != 0) return;
+  printf("[DEBUG GC] ulp_mrbc_gc_space addr: %p\n", (void*)ulp_mrbc_gc_space);
+  printf("[DEBUG GC] ulp_mrbc_gc_space end:  %p\n", (void*)&ulp_mrbc_gc_space[MRBC_COPRO_GC_MAX]);
+  printf("[DEBUG GC] MRBC_COPRO_GC_MAX: %d (bytes: %d)\n", MRBC_COPRO_GC_MAX, MRBC_COPRO_GC_MAX * 4);
   for(int i = 0; i < 5; ++i) {
     void * ctrl = &mrbc_gc_space[(uint32_t)heaps[i].ctrl],
          * rgon = &mrbc_gc_space[(uint32_t)heaps[i].region];
@@ -50,6 +53,7 @@ void mrbcopro_gc_init(void) {
     heaps[i].region = rgon;
     ulp_heaps[i].ctrl = MRBC_COPRO_PTR_TO_NATIVE_PTR(ctrl);
     ulp_heaps[i].region = MRBC_COPRO_PTR_TO_NATIVE_PTR(rgon);
+    printf("[DEBUG GC] heap[%d] ctrl: %p, region: %p\n", i, ctrl, rgon);
   }
 }
 
@@ -214,6 +218,7 @@ void * mrbcopro_gc_alloc(size_t length, int special) {
   mrbcopro_gc_gc();
   goto retry;
 ret:
+  printf("[DEBUG GC] alloc size=%d, addr=%p, gc_end=%p\n", (int)length, retVal, (void*)&mrbc_gc_space[MRBC_GC_MAX]);
   memset(retVal, 0, len);
   return retVal;
 }

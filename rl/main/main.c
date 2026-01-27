@@ -18,8 +18,8 @@
 ///// CHANGE HERE!
 //#include "gather_sht30_fast.c"
 //#include "gather_sht30.c"
-//#include "gps_acc.c"
-#include "pedometer.c"
+#include "gps_acc.c"
+// #include "pedometer.c"
 /////
 
 extern const uint8_t bin_start[] asm("_binary_ulp_main_bin_start");
@@ -146,11 +146,13 @@ void app_main(void)
 #if CONFIG_IDF_TARGET_ESP32C6
     // ULPバイナリをロード
     ulp_lp_core_load_binary(bin_start, (bin_end - bin_start));
+    //printf("ulp_lp_core_load_binary: %d\n", ulp_lp_core_load_binary(bin_start,(bin_end-bin_start)));
 #else
     ulp_riscv_load_binary(bin_start, (bin_end - bin_start));
 #endif
 
     esp_sleep_enable_ulp_wakeup();
+    //printf("esp_sleep_enable_ulp_wakeup: %d\n", esp_sleep_enable_ulp_wakeup());
 
     // mruby初期化
     mrbc_init(memory_pool, MRBC_MEMORY_SIZE);

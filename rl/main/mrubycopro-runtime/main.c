@@ -77,7 +77,6 @@ void* mrbc_sp_bottom;
 volatile uint16_t stopreason = 0;
 volatile uint16_t ack = 0;
 volatile void * required_object = 0;
-volatile uint32_t step_count_value = 0;
 #define TRANSLATION_TABLE_SIZE 4
 volatile struct {
   void * from;
