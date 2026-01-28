@@ -71,8 +71,7 @@ void sensor_init(void) {
   uint8_t cmd1[] = {0x1F, 0x52}; // Soft Reset
   uint8_t cmd2[] = {0x2C, 0x13}; // Filter Ctl (100Hz)
   uint8_t cmd3[] = {0x2D, 0x02}; // Power Ctl (Measure)
-  lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd1, 2,
-                                     500);
+  lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd1, 2, 500);
   delay_ms_busy(10);
   lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd2, 2,
                                      500);

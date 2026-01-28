@@ -45,7 +45,7 @@ class ADXL
 
   def read()
     @i2c.write(DEV_ADDR, CMD_FIFO)
-    Copro.delayMs(1)
+    Copro.delayMs(5)
     val = @i2c.read(DEV_ADDR, 6)
     return nil if val.nil? || val.size == 0
     ADXLResult.new(conv(val, 0), conv(val, 2), conv(val, 4))
@@ -92,7 +92,6 @@ Copro.sleep_and_run do
       val_z = v.z.abs
       mag = val_x + val_y + val_z
       
-      # 
       if ema_mag == 0
         ema_mag = mag
       else
