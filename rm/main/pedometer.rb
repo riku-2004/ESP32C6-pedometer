@@ -11,12 +11,14 @@ class I2C
   end
   def read(addr, len, reg = nil)
     if reg
+      puts "[rb] I2C.read addr=#{addr.to_s(16)} reg=#{reg.to_s(16)} len=#{len}"
       Copro.i2cwrite(addr, [reg])
       Copro.delayMs(1)
     end
     Copro.i2cread(addr, len)
   end
   def write(addr, data)
+    puts "[rb] I2C.write addr=#{addr.to_s(16)} data=#{data.inspect}"
     Copro.i2cwrite(addr, data)
   end
 end
@@ -30,9 +32,12 @@ class ADXL367
   end
 
   def init_sensor
+    puts "Initializing ADXL367..."
     # Soft Reset
     @i2c.write(0x1D, [0x1F, 0x52])
-    Copro.delayMs(10)
+    puts "a"
+    Copro.delayMs(100)
+    puts"b"
     # Filter Control (100Hz)
     @i2c.write(0x1D, [0x2C, 0x13])
     Copro.delayMs(10)
@@ -86,6 +91,7 @@ class Pedometer
   end
 
   def process(x, y, z)
+    puts "Initializing Pedometer..." if @step_count == 0 && @samples_since_change == 0
     # Magnitude (Manhattan)
     mag = x.abs + y.abs + z.abs
     

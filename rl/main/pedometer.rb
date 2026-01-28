@@ -73,6 +73,7 @@ gpio_state = false
 # Copro.gpio_output 1
 # Copro.gpio(1, true)
 # Copro.delayMs(100) # Wait for sensor to boot
+puts "Initializing I2C and ADXL..."
 i2c = I2C.new()
 acc = ADXL.new(i2c)
 acc.on()

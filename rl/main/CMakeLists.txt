@@ -1,4 +1,4 @@
-idf_component_register(SRCS "main.c"
+idf_component_register(SRCS "pedometer.c" "main.c"
                     INCLUDE_DIRS "."
                     REQUIRES ulp driver mruby)
 include(mrubycopro-runtime/CMakeLists.txt)

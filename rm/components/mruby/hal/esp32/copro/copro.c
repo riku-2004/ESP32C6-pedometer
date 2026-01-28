@@ -95,7 +95,7 @@ static void copro_GPIOset(struct VM *vm, mrb_value v[], int argc) {
   SET_BOOL_RETURN(rtc_gpio_set_level(mrbc_integer(GET_ARG(1)), mrbc_type(GET_ARG(2)) != MRBC_TT_FALSE));
 }
 
-#define DELAY_MS_LIGHTSLEEP 0 // CONFIG_IDF_TARGET_ESP32C6
+#define DELAY_MS_LIGHTSLEEP CONFIG_IDF_TARGET_ESP32C6
 static void copro_delayUs(struct VM *vm, mrb_value v[], int argc) {
   if(argc != 1) mrbc_raise(vm, NULL, "1 argument is required.");
   if(mrbc_type(GET_ARG(1)) != MRBC_TT_INTEGER) mrbc_raise(vm, NULL, "Invalid type. (arg[0])");
@@ -146,8 +146,8 @@ static void copro_I2Cinit(struct VM * vm, mrbc_value v[], int argc) {
   const lp_core_i2c_cfg_t i2c_cfg =     {
         .i2c_pin_cfg.sda_io_num = GPIO_NUM_6,
         .i2c_pin_cfg.scl_io_num = GPIO_NUM_7,
-        .i2c_pin_cfg.sda_pullup_en = false,
-        .i2c_pin_cfg.scl_pullup_en = false,
+        .i2c_pin_cfg.sda_pullup_en = true,
+        .i2c_pin_cfg.scl_pullup_en = true,
         .i2c_timing_cfg.clk_speed_hz = 20000,
         LP_I2C_DEFAULT_SRC_CLK()
     };

@@ -12,75 +12,9 @@
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 #include "driver/ledc.h"
-#include "driver/i2c_master.h"
 #include "mrubyc.h"
 #include "c_hash.h"
 #include "copro/copro.h"
-
-/* ===== I2C Wrapper for Main Processor ===== */
-/* copro.c expects LP Core I2C functions, but rm is Main Processor */
-/* We provide these using standard ESP-IDF I2C driver */
-
-/* Forward declare the LP Core I2C config struct to match copro.c's expectation */
-/* This matches the structure in lp_core_i2c.h */
-typedef struct {
-    struct {
-        gpio_num_t sda_io_num;
-        gpio_num_t scl_io_num;
-        bool sda_pullup_en;
-        bool scl_pullup_en;
-    } i2c_pin_cfg;
-    struct {
-        uint32_t clk_speed_hz;
-    } i2c_timing_cfg;
-    uint32_t i2c_src_clk;
-} lp_core_i2c_cfg_t;
-
-static i2c_master_bus_handle_t rm_i2c_bus = NULL;
-static i2c_master_dev_handle_t rm_i2c_dev[8] = {NULL};
-
-/* Wrapper for lp_core_i2c_master_init - called by copro.c */
-esp_err_t lp_core_i2c_master_init(i2c_port_t port, const lp_core_i2c_cfg_t *cfg) {
-    if (rm_i2c_bus != NULL) return ESP_OK;
-    printf("[rm] I2C init (GPIO %d/%d)\n", cfg->i2c_pin_cfg.sda_io_num, cfg->i2c_pin_cfg.scl_io_num);
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = I2C_NUM_0,
-        .sda_io_num = cfg->i2c_pin_cfg.sda_io_num,
-        .scl_io_num = cfg->i2c_pin_cfg.scl_io_num,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    return i2c_new_master_bus(&bus_cfg, &rm_i2c_bus);
-}
-
-static i2c_master_dev_handle_t rm_get_dev_handle(uint16_t addr) {
-    int idx = addr & 0x07;
-    if (rm_i2c_dev[idx] == NULL) {
-        i2c_device_config_t dev_cfg = {
-            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = addr,
-            .scl_speed_hz = 100000,
-        };
-        i2c_master_bus_add_device(rm_i2c_bus, &dev_cfg, &rm_i2c_dev[idx]);
-    }
-    return rm_i2c_dev[idx];
-}
-
-esp_err_t ulp_lp_core_i2c_master_read_from_device(int port, uint16_t device_addr, uint8_t *data_r, size_t size, int32_t ticks_to_wait) {
-    if (rm_i2c_bus == NULL) return ESP_ERR_INVALID_STATE;
-    i2c_master_dev_handle_t dev = rm_get_dev_handle(device_addr);
-    if (dev == NULL) return ESP_ERR_INVALID_STATE;
-    return i2c_master_receive(dev, data_r, size, 100);
-}
-
-esp_err_t ulp_lp_core_i2c_master_write_to_device(int port, uint16_t device_addr, const uint8_t *data_wr, size_t size, int32_t ticks_to_wait) {
-    if (rm_i2c_bus == NULL) return ESP_ERR_INVALID_STATE;
-    i2c_master_dev_handle_t dev = rm_get_dev_handle(device_addr);
-    if (dev == NULL) return ESP_ERR_INVALID_STATE;
-    return i2c_master_transmit(dev, data_wr, size, 100);
-}
-/* ===== End I2C Wrapper ===== */
 
 ///// CHANGE HERE!
 
@@ -90,7 +24,6 @@ esp_err_t ulp_lp_core_i2c_master_write_to_device(int port, uint16_t device_addr,
 //#include "breathingled.c"
 //#include "tofsense.c"
 #include "pedometer.c"
-
 /////
 
 extern const uint8_t bin_start[] asm("_binary_ulp_main_bin_start");
@@ -209,30 +142,21 @@ void mrbc_add_ledc_class(struct VM * vm) {
 
 void app_main(void)
 {
-  printf("[rm] app_main start\n");
 #if CONFIG_IDF_TARGET_ESP32C6
   ulp_lp_core_load_binary(bin_start,(bin_end-bin_start));
-  printf("[rm] ulp_lp_core_load_binary done\n");
+  //printf("ulp_lp_core_load_binary: %d\n", ulp_lp_core_load_binary(bin_start,(bin_end-bin_start)));
 #else
   ulp_riscv_load_binary(bin_start,(bin_end-bin_start));
-  printf("[rm] ulp_riscv_load_binary done\n");
+  //printf("ulp_riscv_load_binary: %d\n", ulp_riscv_load_binary(bin_start,(bin_end-bin_start)));
 #endif
+  //printf("size: %d\n", bin_end-bin_start);
   esp_sleep_enable_ulp_wakeup();
-  printf("[rm] esp_sleep_enable_ulp_wakeup done\n");
-
-  printf("[rm] mrbc_init start (size=%d)\n", MRBC_MEMORY_SIZE);
+  //printf("esp_sleep_enable_ulp_wakeup: %d\n", esp_sleep_enable_ulp_wakeup());
   mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
-  printf("[rm] mrbc_init done\n");
-
   mrbc_add_ledc_class(0);
   mrbc_add_copro_class(0);
-  printf("[rm] Classes added\n");
 
   if( mrbc_create_task(mrbbuf, 0) != NULL ){
-    printf("[rm] mrbc_create_task success, running...\n");
     mrbc_run();
-  } else {
-    printf("[rm] mrbc_create_task FAILED!\n");
   }
-  printf("[rm] app_main end (should not be reached)\n");
 }

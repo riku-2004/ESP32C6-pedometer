@@ -42,6 +42,7 @@ void app_main(void)
 
     // 電源投入時のみ初期化（タイマーWakeupではLP Coreは継続動作中なので再起動しない）
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
+        printf("Initial Power On\n");
         rtc_gpio_init(1);
         rtc_gpio_set_direction(1, RTC_GPIO_MODE_OUTPUT_ONLY);
         rtc_gpio_pulldown_dis(1);
@@ -51,8 +52,9 @@ void app_main(void)
         ulp_lp_core_cfg_t cfg = {
             .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
         };
-
+        printf("Initializing I2C for LP Core...\n");
         lp_i2c_init(); // I2C Init with Pullups
+        printf("Loading LP Core binary...\n");
         lp_core_init();
 
         printf("Starting Pedometer on LP Core (Pullups Enabled)...\n");
