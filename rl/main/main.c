@@ -18,11 +18,11 @@
 ///// CHANGE HERE!
 //#include "gather_sht30_fast.c"
 //#include "gather_sht30.c"
-// #include "gps_acc.c"
+#include "gps_acc.c"
 //#include "breathingled.c"
 //#include "tofsense_fast.c"
 // #include "tofsense.c"
-#include "pedometer.c"
+// #include "pedometer.c"
 /////
 
 extern const uint8_t bin_start[] asm("_binary_ulp_main_bin_start");

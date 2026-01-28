@@ -3,9 +3,11 @@ class I2C
     Copro.i2cinit()
   end
   def read(addr, len)
+    puts "Copro.read"
     Copro.i2cread(addr, len)
   end
   def write(addr, data)
+    puts "Copro.write"
     Copro.i2cwrite(addr, data)
   end
 end
@@ -16,6 +18,7 @@ class ADXLResult
   end
 end
 class ADXL
+  puts "ADXL class loaded"
   DEV_ADDR = 0x1D
   CTRL_REG = 0x2D
   CMD_MEASURE = [CTRL_REG, 2]
@@ -50,6 +53,7 @@ end
 
 # mock
 class GPS
+  puts "GPS class loaded"
   def initialize(i2c)
   end
 end
@@ -78,7 +82,9 @@ end
 Copro.gpio_output 1
 Copro.gpio(1, true)
 i2c = I2C.new()
+puts "I2C initialized."
 acc = ADXL.new(i2c)
+puts "ADXL initialized."
 gps = GPS.new(i2c)
 buf = Array.new(12)
 #cb = CircularBuffer.new(5, ADXLResult.new(0, 0, 100)) # only Z is 1G.
@@ -86,6 +92,7 @@ THRESHOLD = 2000
 GRAVITY = 4000 # 1G / 0.25MG/LSB = 4000
 
 def read_for_1sec(acc, buffer)
+  puts "Reading accelerometer for 1 sec..."
   i = 0
   res = true
   acc.on()
@@ -101,6 +108,7 @@ def read_for_1sec(acc, buffer)
   end
   acc.off()
   res
+  puts "Done reading accelerometer."
 end
 
 Copro.gpio(1,false)
@@ -120,6 +128,7 @@ Copro.sleep_and_run do
     Copro.delayMs(7000) # 7 sec
   end
 end
+puts "Motion detected, starting GPS acquisition..."
 Copro.gpio(1,true)
 p buf
 # do something with gps.

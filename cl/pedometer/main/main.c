@@ -38,11 +38,11 @@ extern volatile uint32_t ulp_debug_cycles;
 
 void app_main(void)
 {
+
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
     // 電源投入時のみ初期化（タイマーWakeupではLP Coreは継続動作中なので再起動しない）
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
-        printf("Initial Power On\n");
         rtc_gpio_init(1);
         rtc_gpio_set_direction(1, RTC_GPIO_MODE_OUTPUT_ONLY);
         rtc_gpio_pulldown_dis(1);
@@ -52,32 +52,24 @@ void app_main(void)
         ulp_lp_core_cfg_t cfg = {
             .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU
         };
-        // printf("lp_i2c_init()\n");
         lp_i2c_init(); // I2C Init with Pullups
-        // printf("lp_core_init()\n");
         lp_core_init();
 
 
-        // printf("Starting Pedometer on LP Core (Pullups Enabled)...\n");
 
         ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
 
         rtc_gpio_set_level(1, 0);
     } else {
+
         // タイマーまたはULPからのWakeup時
         // USB再接続のために少し待機
         vTaskDelay(500 / portTICK_PERIOD_MS);
-        // printf("\n=== WAKEUP ===\n");
-        // printf("Steps: %lu, Cycles: %lu, PeakDiff: %ld\n", 
-            //    ulp_step_count, ulp_debug_cycles, ulp_debug_peak_diff);
-        // printf("Mag: %ld, Filt: %ld\n", 
-            //    ulp_debug_mag, ulp_debug_filtered);
         fflush(stdout);
         vTaskDelay(100 / portTICK_PERIOD_MS); // 出力完了待ち
     }
 
     // 定期的なタイマーWakeup（30秒ごと）とULPからのWakeupを両方有効化
-    // printf("Entering deep sleep (30s timer + LP Core trigger)...\n");
     //起きたタイミングで歩数を出力する
     // printf("Total Steps: %lu\n", ulp_step_count);
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(30 * 1000000)); // 30秒
