@@ -146,8 +146,8 @@ static void copro_I2Cinit(struct VM * vm, mrbc_value v[], int argc) {
   const lp_core_i2c_cfg_t i2c_cfg =     {
         .i2c_pin_cfg.sda_io_num = GPIO_NUM_6,
         .i2c_pin_cfg.scl_io_num = GPIO_NUM_7,
-        .i2c_pin_cfg.sda_pullup_en = false,
-        .i2c_pin_cfg.scl_pullup_en = false,
+        .i2c_pin_cfg.sda_pullup_en = true,
+        .i2c_pin_cfg.scl_pullup_en = true,
         .i2c_timing_cfg.clk_speed_hz = 20000,
         LP_I2C_DEFAULT_SRC_CLK()
     };

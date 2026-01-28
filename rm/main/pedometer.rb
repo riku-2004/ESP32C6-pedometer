@@ -3,6 +3,26 @@
 # Lightweight Dynamic Threshold using EMA
 #
 
+class I2C
+  def initialize()
+    puts "[rb] I2C.new start"
+    Copro.i2cinit()
+    puts "[rb] I2C.new done"
+  end
+  def read(addr, len, reg = nil)
+    if reg
+      puts "[rb] I2C.read addr=#{addr.to_s(16)} reg=#{reg.to_s(16)} len=#{len}"
+      Copro.i2cwrite(addr, [reg])
+      Copro.delayMs(1)
+    end
+    Copro.i2cread(addr, len)
+  end
+  def write(addr, data)
+    puts "[rb] I2C.write addr=#{addr.to_s(16)} data=#{data.inspect}"
+    Copro.i2cwrite(addr, data)
+  end
+end
+
 class ADXL367
   attr_reader :x, :y, :z
 
@@ -12,9 +32,12 @@ class ADXL367
   end
 
   def init_sensor
+    puts "Initializing ADXL367..."
     # Soft Reset
     @i2c.write(0x1D, [0x1F, 0x52])
-    Copro.delayMs(10)
+    puts "a"
+    Copro.delayMs(100)
+    puts"b"
     # Filter Control (100Hz)
     @i2c.write(0x1D, [0x2C, 0x13])
     Copro.delayMs(10)
@@ -28,19 +51,20 @@ class ADXL367
     # Read 6 bytes starting from 0x0E (XDATA_L)
     data = @i2c.read(0x1D, 6, 0x0E)
     if data
-      @x = conv(data[0], data[1])
-      @y = conv(data[2], data[3])
-      @z = conv(data[4], data[5])
+
+      @x = conv(data, 0)
+      @y = conv(data, 2)
+      @z = conv(data, 4)
       return true
     end
     return false
   end
 
-  def conv(lsb, msb)
-    val = (msb << 8) | lsb
-    val = val >> 2 # 14bit
+  def conv(ary, base)
+    val = (ary.getbyte(base) << 8) | ary.getbyte(base+1)
+    val = val >> 2
     if (val & 0x2000) != 0
-      val = val - 16384 # 2's complement
+      val = val - 16384 # Handle 14-bit sign (bit 13 set means negative)
     end
     val
   end
@@ -67,6 +91,7 @@ class Pedometer
   end
 
   def process(x, y, z)
+    puts "Initializing Pedometer..." if @step_count == 0 && @samples_since_change == 0
     # Magnitude (Manhattan)
     mag = x.abs + y.abs + z.abs
     
@@ -106,10 +131,13 @@ class Pedometer
           @dynamic_thresh = (@dynamic_thresh * 3 + mid_point) / 4
         end
         
-        # Step validation
+        # Validation
+        # p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
         if peak_diff > MIN_SENSITIVITY
           if @reg_mode
             @step_count += 1
+            # gpio_state = !gpio_state
+            # Copro.gpio(1, gpio_state)
             puts "Step! Total: #{@step_count}"
           else
             @consec_steps += 1
@@ -122,9 +150,8 @@ class Pedometer
           end
         else
           # Noise
-          unless @reg_mode
-            @consec_steps = 0
-          end
+          # puts "Noise ignore: #{peak_diff}"
+          @consec_steps = 0 if !@reg_mode
         end
         
         @looking_for_max = true
@@ -150,14 +177,19 @@ end
 i2c = I2C.new
 adxl = ADXL367.new(i2c)
 ped = Pedometer.new
+debug_cnt = 0
 
-puts "Starting Pedometer (Ruby)"
+puts "Starting Pedometer (Ruby/rm)"
 
 while true
   if adxl.read
     mag = ped.process(adxl.x, adxl.y, adxl.z)
-    # Debug output ~1Hz (approx)
-    # puts "Mag: #{mag}, Steps: #{ped.step_count}" if rand(50) == 0
+    debug_cnt += 1
+    if debug_cnt >= 50  # 1秒ごと (50Hz)
+      puts "Mag: #{mag}, Steps: #{ped.step_count}"
+      debug_cnt = 0
+    end
   end
   Copro.delayMs(20) # 50Hz
 end
+

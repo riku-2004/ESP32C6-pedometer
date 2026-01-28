@@ -66,6 +66,7 @@ int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
 }
 
 /* ===== センサー初期化 ===== */
+/* ===== センサー初期化 (堅牢化) ===== */
 void sensor_init(void) {
   uint8_t cmd1[] = {0x1F, 0x52}; // Soft Reset
   uint8_t cmd2[] = {0x2C, 0x13}; // Filter Ctl (100Hz)

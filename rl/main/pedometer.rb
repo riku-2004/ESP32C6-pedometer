@@ -1,7 +1,5 @@
-#
-# Pedometer for LP Core (rl) - Unified Algorithm
-# Lightweight Dynamic Threshold using EMA
-#
+
+# Pedometer for LP Core (rl)
 
 class I2C
   def initialize()
@@ -24,24 +22,23 @@ end
 
 class ADXL
   DEV_ADDR = 0x1D
-  CMD_MEASURE = [0x2D, 2]
+  CTRL_REG = 0x2D
+  CMD_MEASURE = [CTRL_REG, 2]
+  CMD_STANDBY = [CTRL_REG, 0]
   CMD_SOFTRESET = [0x1f, 0x52]
-  CMD_FILTER = [0x2C, 0x13]
-  CMD_FIFO = [0x0E]
-
+  CMD_FIFO = [0x18]
   def initialize(i2c)
     @i2c = i2c
     @i2c.write(DEV_ADDR, CMD_SOFTRESET)
-    Copro.delayMs(10)
-    @i2c.write(DEV_ADDR, CMD_FILTER)
-    Copro.delayMs(10)
+    @i2c.write(DEV_ADDR, [0x29, 1])
+    @i2c.write(DEV_ADDR, [0x28, 2])
   end
-
   def on()
     @i2c.write(DEV_ADDR, CMD_MEASURE)
-    Copro.delayMs(50)
   end
-
+  def off()
+    @i2c.write(DEV_ADDR, CMD_STANDBY)
+  end
   def conv(ary, base)
     ((ary.getbyte(base) << 26) >> 18) + ary.getbyte(base+1)
   end
@@ -50,7 +47,7 @@ class ADXL
     @i2c.write(DEV_ADDR, CMD_FIFO)
     Copro.delayMs(1)
     val = @i2c.read(DEV_ADDR, 6)
-    return nil if val.size == 0
+    return nil if val.nil? || val.size == 0
     ADXLResult.new(conv(val, 0), conv(val, 2), conv(val, 4))
   end
 end
@@ -73,12 +70,14 @@ consec_steps = 0
 gpio_state = false
 
 # === Setup ===
-Copro.gpio_output 1
-Copro.gpio(1, true)
+# Copro.gpio_output 1
+# Copro.gpio(1, true)
+# Copro.delayMs(100) # Wait for sensor to boot
+puts "Initializing I2C and ADXL..."
 i2c = I2C.new()
 acc = ADXL.new(i2c)
 acc.on()
-Copro.gpio(1, false)
+# Copro.gpio(1, false)
 
 puts "Starting Pedometer (rl) - Unified Algorithm"
 
@@ -88,9 +87,12 @@ Copro.sleep_and_run do
     v = acc.read()
     if v
       # Magnitude
-      mag = v.x.abs + v.y.abs + v.z.abs
+      val_x = v.x.abs
+      val_y = v.y.abs
+      val_z = v.z.abs
+      mag = val_x + val_y + val_z
       
-      # EMA LPF
+      # 
       if ema_mag == 0
         ema_mag = mag
       else
@@ -127,23 +129,25 @@ Copro.sleep_and_run do
           end
           
           # Validation
+          # p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
           if peak_diff > MIN_SENSITIVITY
             if reg_mode
               step_count += 1
               gpio_state = !gpio_state
-              Copro.gpio(1, gpio_state)
-              p step_count
+              # Copro.gpio(1, gpio_state)
+              #puts "Step! Total: #{step_count}"
             else
               consec_steps += 1
               if consec_steps >= REGULATION_STEPS
                 reg_mode = true
                 step_count += consec_steps
                 consec_steps = 0
-                p step_count
+                #puts "Regulation Mode ON! Steps: #{step_count}"
               end
             end
           else
             # Noise
+            # puts "Noise ignore: #{peak_diff}"
             consec_steps = 0 if !reg_mode
           end
           
@@ -160,7 +164,9 @@ Copro.sleep_and_run do
         consec_steps = 0 if !reg_mode
       end
     end
-
+    
     Copro.delayMs(20) # 50Hz
   end
 end
+
+

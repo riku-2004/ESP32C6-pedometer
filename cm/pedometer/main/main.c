@@ -50,25 +50,39 @@ static int consec_steps = 0;
 static bool gpio_state = false;
 
 /* ===== I2C 初期化 ===== */
-static esp_err_t i2c_init(void) {
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = I2C_PORT,
-        .sda_io_num = I2C_SDA,
-        .scl_io_num = I2C_SCL,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus_handle);
-    if (err != ESP_OK) return err;
+// static esp_err_t i2c_init(void) {
+//     i2c_master_bus_config_t bus_cfg = {
+//         .i2c_port = I2C_PORT,
+//         .sda_io_num = I2C_SDA,
+//         .scl_io_num = I2C_SCL,
+//         .clk_source = I2C_CLK_SRC_DEFAULT,
+//         .glitch_ignore_cnt = 7,
+//         .flags.enable_internal_pullup = true,
+//     };
+//     esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus_handle);
+//     if (err != ESP_OK) return err;
 
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = ADXL367_ADDR,
-        .scl_speed_hz = I2C_FREQ,
-    };
-    return i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+//     i2c_device_config_t dev_cfg = {
+//         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+//         .device_address = ADXL367_ADDR,
+//         .scl_speed_hz = I2C_FREQ,
+//     };
+//     return i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+// }
+int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
+    uint8_t reg = 0x0E;
+    uint8_t data_rd[6];
+    if (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, 
+            &reg, 1, 5000) != ESP_OK) return 1;
+    delay_ms_busy(1);
+    if (lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, 
+            data_rd, 6, 5000) != ESP_OK) return 2;
+    *x = conv(data_rd, 0);
+    *y = conv(data_rd, 2);
+    *z = conv(data_rd, 4);
+    return 0;
 }
+
 
 /* ===== GPIO 初期化 ===== */
 static void gpio_marker_init(void) {
@@ -161,9 +175,11 @@ static void process_sample(int32_t mag) {
             if (peak_diff > MIN_SENSITIVITY) {
                 if (reg_mode) {
                     step_count++;
+                    ESP_LOGI(TAG, "Step! Total: %lu", step_count);
+                    
                     gpio_state = !gpio_state;
                     gpio_set_level(STEP_MARKER_GPIO, gpio_state);
-                    ESP_LOGI(TAG, "Step! Total: %lu", step_count);
+
                 } else {
                     consec_steps++;
                     if (consec_steps >= REGULATION_STEPS) {

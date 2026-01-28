@@ -42,6 +42,7 @@ void app_main(void)
 
     // 電源投入時のみ初期化（タイマーWakeupではLP Coreは継続動作中なので再起動しない）
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
+        printf("Initial Power On\n");
         rtc_gpio_init(1);
         rtc_gpio_set_direction(1, RTC_GPIO_MODE_OUTPUT_ONLY);
         rtc_gpio_pulldown_dis(1);

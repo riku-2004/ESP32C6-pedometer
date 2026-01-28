@@ -1,5 +1,5 @@
 #pragma once
-#define MRBC_PROF_DBG_ENABLE 0
+#define MRBC_PROF_DBG_ENABLE 1
 #if MRBC_PROF_DBG_ENABLE
 #define MRBC_PROF_DBG_READABLE_ENABLE 0
 #include "../../src/console.h"
