@@ -1,14 +1,5 @@
 
 # Pedometer for LP Core (rl)
-# Copro.gpio_output 1
-# Copro.gpio(1, true)
-# Copro.delayMs(50)
-# Copro.gpio(1, false)
-# Copro.delayMs(50)
-# Copro.gpio(1, true)
-# Copro.delayMs(50)
-# Copro.gpio(1, false)
-
 class I2C
   def initialize()
     Copro.i2cinit()
@@ -65,14 +56,17 @@ class ADXL
   # def conv(ary, base)
   #   ((ary.getbyte(base) << 26) >> 18) + ary.getbyte(base+1)
   # end
+  def conv(ary, base)
+    ((ary.getbyte(base) <<24) | (ary.getbyte(base) << 16)) >> 18
+  end
 
-  def conv(str, base)
-  lo = str.getbyte(base)
-  hi = str.getbyte(base + 1)
-  v = (hi << 8) | lo
-  v -= 65536 if v >= 32768
-  v
-end
+#   def conv(str, base)
+#   lo = str.getbyte(base)
+#   hi = str.getbyte(base + 1)
+#   v = (hi << 8) | lo
+#   v -= 65536 if v >= 32768
+#   v
+#   end
 
   def read()
     # @i2c.write(DEV_ADDR, [0x00])
@@ -103,7 +97,7 @@ end
 # === Parameters ===
 MIN_SENSITIVITY = 2000
 STEP_TIMEOUT = 50
-REGULATION_STEPS = 4
+REGULATION_STEPS = 4 #一回１にして実験
 
 # === State Variables ===
 step_count = 0
@@ -118,32 +112,13 @@ consec_steps = 0
 gpio_state = false
 
 # === Setup ===
-# Copro.gpio_output 1
-# Copro.gpio(1, true)
-# Copro.delayMs(100) # Wait for sensor to boot
-# puts "Initializing I2C and ADXL..."
 i2c = I2C.new()
-# puts "Initializing ADXL"
 acc = ADXL.new(i2c)
-# puts "acc = #{acc}"
-# p acc
-# puts "ADXL Initialized"
 acc.on()
-# puts "acc.on() called"
-# Copro.gpio(1, false)
-
-# puts "Starting Pedometer (rl) - Unified Algorithm"
-
-# Copro.gpio_output 1
-# debug---------------------
 # === Main Loop (LP Core) ===
 # Copro.sleep_and_run do
-for num in 1..5 do
-  puts "start-loop"
+for num in 1..200 do
   v = acc.read()
-  # puts "read acc"
-  # puts "v = #{v}"
-  # p v
   if v
     puts "Got Accel Data: x=#{v.x} y=#{v.y} z=#{v.z}"
     # Magnitude
@@ -160,15 +135,15 @@ for num in 1..5 do
     
     filtered = ema_mag
     samples_since_change += 1
-    puts "samples_since_change: #{samples_since_change}"
-    puts "ema_mag: #{ema_mag}, max_peak: #{max_peak}"
+    # puts "samples_since_change: #{samples_since_change}"
+    # puts "ema_mag: #{ema_mag}, max_peak: #{max_peak}"
     if looking_for_max
       if filtered > max_peak
-        puts "a"
+        # puts "a"
         max_peak = filtered
         samples_since_change = 0
       elsif samples_since_change > 5 && (max_peak - filtered) > 500
-        puts "b"
+        # puts "b"
         # Max Peak Detected
         looking_for_max = false
         min_peak = filtered
@@ -176,47 +151,50 @@ for num in 1..5 do
       end
     else
       if filtered < min_peak
-        puts "c"
+        # puts "c"
         min_peak = filtered
         samples_since_change = 0
       elsif samples_since_change > 5 && (filtered - min_peak) > 500
-        puts "d"
+        # puts "d"
+        
         # Min Peak (Valley) Detected -> Step Cycle Complete
         peak_diff = max_peak - min_peak
         mid_point = (max_peak + min_peak) / 2
-        
+        # puts "cycle done: diff=#{peak_diff} reg=#{reg_mode} steps=#{step_count}"
+        puts "CYCLE d: diff=#{peak_diff} max=#{max_peak} min=#{min_peak} filt=#{filtered}"
+
         # Update Dynamic Threshold
         if dynamic_thresh == 0
-          puts "e"
+          # puts "e"
           dynamic_thresh = mid_point
         else
-          puts "f"
+          # puts "f"
           dynamic_thresh = (dynamic_thresh * 3 + mid_point) / 4
         end
         
         # Validation
-        p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
+        # p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
         if peak_diff > MIN_SENSITIVITY
           if reg_mode
-            puts "g"
+            # puts "g"
             step_count += 1
             gpio_state = !gpio_state
             Copro.gpio(1, gpio_state)
             puts "Step! Total: #{step_count}"
           else
-            puts "h"
+            # puts "h"
             consec_steps += 1
             if consec_steps >= REGULATION_STEPS
-              puts "i"
+              # puts "i"
               reg_mode = true
               step_count += consec_steps
               consec_steps = 0
-              puts "Regulation Mode ON! Steps: #{step_count}"
+              # puts "Regulation Mode ON! Steps: #{step_count}"
             end
           end
         else
           # Noise
-          puts "Noise ignore: #{peak_diff}"
+          # puts "Noise ignore: #{peak_diff}"
           consec_steps = 0 if !reg_mode
         end
         
@@ -232,12 +210,11 @@ for num in 1..5 do
       max_peak = filtered
       consec_steps = 0 if !reg_mode
     end
-    puts "mag: #{mag} ema: #{ema_mag} filt: #{filtered} max: #{max_peak} min: #{min_peak} thresh: #{dynamic_thresh}"
+    # puts "mag: #{mag} ema: #{ema_mag} filt: #{filtered} max: #{max_peak} min: #{min_peak} thresh: #{dynamic_thresh} steps: #{step_count}"
   end
-  # Copro.delayMs(20) # 50Hz
-  puts "end-loop"
+  Copro.delayMs(20) # 50Hz
+  # puts "end-loop"
 end
-print("end\n")
 # end
 
 
