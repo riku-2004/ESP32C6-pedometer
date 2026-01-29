@@ -37,27 +37,6 @@ static uint8_t memory_pool[MRBC_MEMORY_SIZE];
 #define CHECK_WAKEUP_OVERHEAD 0
 void app_main(void)
 {
-// setvbuf(stdout, NULL, _IONBF, 0)
-
-//   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-//   esp_err_t r = esp_sleep_enable_timer_wakeup(3ULL * 1000 * 1000); // 3秒
-//   printf("timer set ret=%d\n", (int)r);
-
-//   printf("before sleep\n");
-//   fflush(stdout);
-
-//   esp_err_t s = esp_light_sleep_start();
-//   // ここに来ているかどうかも確認
-//   printf("light_sleep ret=%d cause=%d\n", (int)s, (int)esp_sleep_get_wakeup_cause());
-//   fflush(stdout);
-
-//   // 起床後、再接続が間に合わなくても見えるように何回も出す
-//   for (int i = 0; i < 30; i++) {
-//     printf("AFTER SLEEP tick %d\n", i);
-//     vTaskDelay(pdMS_TO_TICKS(200));
-//   }
-
-
 #if CHECK_WAKEUP_OVERHEAD
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_timer_wakeup(1000 * 1000);
@@ -73,15 +52,12 @@ void app_main(void)
   ulp_riscv_load_binary(bin_start,(bin_end-bin_start));
   //printf("ulp_riscv_load_binary: %d\n", ulp_riscv_load_binary(bin_start,(bin_end-bin_start)));
 #endif
-
   //printf("size: %d\n", bin_end-bin_start);
   esp_sleep_enable_ulp_wakeup();
   //printf("esp_sleep_enable_ulp_wakeup: %d\n", esp_sleep_enable_ulp_wakeup());
   mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
   
   mrbc_add_copro_class(0);
-
-
 
   if( mrbc_create_task(mrbbuf, 0) != NULL ){
     mrbc_run();

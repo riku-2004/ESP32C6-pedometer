@@ -16,17 +16,14 @@
 #include "c_hash.h"
 #include "copro/copro.h"
 
-#include "driver/i2c_master.h"
-
-
 ///// CHANGE HERE!
 
 //#include "gather_sht30_fast.c"
 //#include "gather_sht30.c"
 //#include "gps_acc.c"
 //#include "breathingled.c"
-//#include "tofsense.c"
-#include "pedometer.c"
+#include "tofsense.c"
+
 /////
 
 extern const uint8_t bin_start[] asm("_binary_ulp_main_bin_start");
@@ -41,10 +38,6 @@ static uint8_t memory_pool[MRBC_MEMORY_SIZE];
 #define DEFAULT_LEDC_MODE           LEDC_LOW_SPEED_MODE // ESP32-C6はLOW SPEEDのみ
 #define DEFAULT_LEDC_DUTY_RES       LEDC_TIMER_10_BIT
 #define DEFAULT_LEDC_FREQUENCY      (5000)
-
-#define I2C_PORT I2C_NUM_0
-#define SDA_PIN  GPIO_NUM_6   // ← 実配線に合わせて
-#define SCL_PIN  GPIO_NUM_7   // ← 実配線に合わせて
 
 //================================================================
 /*! LEDC.new(gpio: num, ch: num, resolution: bits, freq: hz)
@@ -146,49 +139,24 @@ void mrbc_add_ledc_class(struct VM * vm) {
   mrbc_define_method(vm, cls_ledc, "fade", mrbc_ledc_fade);
   mrbc_define_method(vm, mrbc_class_object, "sleep", mrbc_normal_sleep);
 }
-static const char *TAG = "I2C_SCAN";
 
 void app_main(void)
 {
-// #if CONFIG_IDF_TARGET_ESP32C6
-//   ulp_lp_core_load_binary(bin_start,(bin_end-bin_start));
-//   //printf("ulp_lp_core_load_binary: %d\n", ulp_lp_core_load_binary(bin_start,(bin_end-bin_start)));
-// #else
-//   ulp_riscv_load_binary(bin_start,(bin_end-bin_start));
-//   //printf("ulp_riscv_load_binary: %d\n", ulp_riscv_load_binary(bin_start,(bin_end-bin_start)));
-// #endif
-//   //printf("size: %d\n", bin_end-bin_start);
-//   esp_sleep_enable_ulp_wakeup();
-//   //printf("esp_sleep_enable_ulp_wakeup: %d\n", esp_sleep_enable_ulp_wakeup());
-//   mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
-//   mrbc_add_ledc_class(0);
-//   mrbc_add_copro_class(0);
+#if CONFIG_IDF_TARGET_ESP32C6
+  ulp_lp_core_load_binary(bin_start,(bin_end-bin_start));
+  //printf("ulp_lp_core_load_binary: %d\n", ulp_lp_core_load_binary(bin_start,(bin_end-bin_start)));
+#else
+  ulp_riscv_load_binary(bin_start,(bin_end-bin_start));
+  //printf("ulp_riscv_load_binary: %d\n", ulp_riscv_load_binary(bin_start,(bin_end-bin_start)));
+#endif
+  //printf("size: %d\n", bin_end-bin_start);
+  esp_sleep_enable_ulp_wakeup();
+  //printf("esp_sleep_enable_ulp_wakeup: %d\n", esp_sleep_enable_ulp_wakeup());
+  mrbc_init(memory_pool, MRBC_MEMORY_SIZE);
+  mrbc_add_ledc_class(0);
+  mrbc_add_copro_class(0);
 
-//   if( mrbc_create_task(mrbbuf, 0) != NULL ){
-//     mrbc_run();
-//   }
-
-  i2c_master_bus_handle_t bus;
-
-  i2c_master_bus_config_t bus_cfg = {
-    .i2c_port = I2C_PORT,
-    .sda_io_num = SDA_PIN,
-    .scl_io_num = SCL_PIN,
-    .clk_source = I2C_CLK_SRC_DEFAULT,
-    .glitch_ignore_cnt = 7,
-    .flags.enable_internal_pullup = true, // 外付けPUあるならfalseでもOK
-  };
-  ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
-
-  ESP_LOGI(TAG, "Scanning I2C bus...");
-
-  for (uint8_t addr = 1; addr < 127; addr++) {
-    esp_err_t ret = i2c_master_probe(bus, addr, 50);
-    if (ret == ESP_OK) {
-      ESP_LOGI(TAG, "Found device at 0x%02X", addr);
-    }
+  if( mrbc_create_task(mrbbuf, 0) != NULL ){
+    mrbc_run();
   }
-
-  ESP_LOGI(TAG, "Scan done");
-  printf("I2C Scan complete.\n");
 }
