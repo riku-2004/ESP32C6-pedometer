@@ -140,7 +140,7 @@ static void copro_GPIOset(struct VM *vm, mrb_value v[], int argc) {
   SET_BOOL_RETURN(rtc_gpio_set_level(mrbc_integer(GET_ARG(1)), mrbc_type(GET_ARG(2)) != MRBC_TT_FALSE));
 }
 
-#define DELAY_MS_LIGHTSLEEP CONFIG_IDF_TARGET_ESP32C6
+#define DELAY_MS_LIGHTSLEEP 0
 static void copro_delayUs(struct VM *vm, mrb_value v[], int argc) {
   if(argc != 1) mrbc_raise(vm, NULL, "1 argument is required.");
   if(mrbc_type(GET_ARG(1)) != MRBC_TT_INTEGER) mrbc_raise(vm, NULL, "Invalid type. (arg[0])");
@@ -165,6 +165,17 @@ FIN:
   SET_NIL_RETURN();
 }
 
+// LP用delayMs
+// static inline void lp_busy_delay_ms(uint32_t ms)
+// {
+//   // 超安全：LP coreで確実に戻るビジーループ
+//   // 係数は環境で調整（まずは大きめ→縮める）
+//   const uint32_t loops_per_ms = 4000;  // 仮値
+//   for (volatile uint32_t i = 0; i < ms * loops_per_ms; i++) {
+//     __asm__ __volatile__("nop");
+//   }
+// }
+
 static void copro_delayMs(struct VM *vm, mrb_value v[], int argc) {
   if(argc != 1) mrbc_raise(vm, NULL, "1 argument is required.");
   if(mrbc_type(GET_ARG(1)) != MRBC_TT_INTEGER) mrbc_raise(vm, NULL, "Invalid type. (arg[0])");
@@ -186,8 +197,9 @@ static void copro_pullup(struct VM *vm, mrb_value v[], int argc) { SET_INT_RETUR
 
 static void copro_I2Cinit(struct VM * vm, mrbc_value v[], int argc) {
   esp_err_t ret = ESP_OK;
+  printf("ESP_OK=%d\n", ESP_OK);
   /* Initialize LP I2C with default configuration */
-  const lp_core_i2c_cfg_t i2c_cfg =     {
+  const lp_core_i2c_cfg_t i2c_cfg = {
         .i2c_pin_cfg.sda_io_num = GPIO_NUM_6,
         .i2c_pin_cfg.scl_io_num = GPIO_NUM_7,
         .i2c_pin_cfg.sda_pullup_en = false,
@@ -203,23 +215,51 @@ static void copro_I2Cinit(struct VM * vm, mrbc_value v[], int argc) {
 extern esp_err_t ulp_lp_core_i2c_master_read_from_device(int, uint16_t device_addr, uint8_t * data_r, size_t size, int32_t ticks_to_wait);
 static void copro_I2Cread(struct VM * vm, mrbc_value v[], int argc) {
   int len = GET_INT_ARG(2);
+  // printf("I2Cread len=%d\n", len);
   mrbc_value ret = mrbc_string_new(vm, NULL, len);
+  // printf("rent=%p\n", ret.string);
   ret.string->data[len] = 0;
-  if(ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, GET_INT_ARG(1), ret.string->data, len, -1) != ESP_OK)
+  esp_err_t err = ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, GET_INT_ARG(1), ret.string->data, len, -1);
+  // printf("err=%d\n", err);
+  // printf("ESP_OK=%d\n", ESP_OK);
+  if(err != ESP_OK)
     mrbc_string_clear(&ret);
   SET_RETURN(ret);
 }
 extern esp_err_t ulp_lp_core_i2c_master_write_to_device(int, uint16_t device_addr, const uint8_t *data_wr, size_t size, int32_t ticks_to_wait);
 static void copro_I2Cwrite(struct VM * vm, mrbc_value v[], int argc) {
   mrbc_value * a2 = &(GET_ARG(2));
+  // printf("argc=%d\n", argc);
+  // printf("addr(arg1)=0x%02lX\n", GET_INT_ARG(1));
+  // printf("GET_ARG(2)=%p\n", a2);
+  // printf("I2Cwrite type=%d\n", a2->tt);
   uint8_t * buf;
   int len;
+
   if(a2->tt== MRBC_TT_STRING) {
     buf = a2->string->data;
     len = a2->string->size;
   } else if(a2->tt == MRBC_TT_ARRAY) {
-    len = a2->array->data_size;
-    buf = alloca(len);
+    // printf("array->data_size=%d\n", a2->array->data_size);
+    vTaskDelay(pdMS_TO_TICKS(100));
+      
+    // printf("a2->array->data=%p\n", a2->array->data);
+    len = a2->array->data_size; 
+    // printf("eliflen = %d\n", len); 
+    
+    // buf = alloca(len); 
+    //bufferをallocaで確保すると動作不良になることがあるため、固定長配列を使用する 
+    uint8_t tmp[32];
+    if(len > (int)sizeof(tmp)) goto fail;
+    for(int i=0;i<len;i++){
+      tmp[i] = (uint8_t)(a2->array->data[i].i & 0xFF);
+    }
+    buf = tmp;
+    
+    // printf("len=%d: ", len);
+    // for(int i=0;i<len;i++) printf("%02X ", buf[i]);
+    // printf("\n");
+    // printf("elifbuf = %p\n", buf);
     for(int i = 0; i < len; ++i) {
       if(a2->array->data[i].tt != MRBC_TT_INTEGER) goto fail;
       buf[i] = a2->array->data[i].i;
@@ -229,12 +269,15 @@ static void copro_I2Cwrite(struct VM * vm, mrbc_value v[], int argc) {
     buf = alloca(1);
     buf[0] = a2->i;
   } else goto fail;
-  if(ulp_lp_core_i2c_master_write_to_device(0, GET_INT_ARG(1), buf, len, -1) != ESP_OK) goto fail;
+  esp_err_t erre = ulp_lp_core_i2c_master_write_to_device(0, GET_INT_ARG(1), buf, len, -1);
+  // printf("error=%d\n", erre);
+  if(erre != ESP_OK) goto fail;
   SET_INT_RETURN(len);
   return;
 fail:
   SET_INT_RETURN(0);
 }
+
 
 // TODO: NOT TESTED YET!
 static void copro_write32(struct VM * vm, mrb_value v[], int argc) {
