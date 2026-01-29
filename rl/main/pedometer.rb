@@ -39,19 +39,19 @@ class ADXL
   CMD_FIFO = [0x18]
   def initialize(i2c)
     @i2c = i2c
-    # Copro.delayMs(100)
-    a = @i2c.write(DEV_ADDR, CMD_SOFTRESET)
-    puts "After SOFTRESET: #{a}"
-    p a
-    # Copro.delayMs(100) #add delay
-    b = @i2c.write(DEV_ADDR, CMD_FILTER)
-    puts "After FILTER: #{b}"
-    p b
-    # Copro.delayMs(100) #add delay
-    c = @i2c.write(DEV_ADDR, CMD_MEASURE)
-    puts "After MEASURE: #{c}"
-    p c
-    # Copro.delayMs(100) #add delay
+    Copro.delayMs(100)
+    @i2c.write(DEV_ADDR, CMD_SOFTRESET)
+    # puts "After SOFTRESET: #{a}"
+    # p a
+    Copro.delayMs(100) #add delay
+    @i2c.write(DEV_ADDR, CMD_FILTER)
+    # puts "After FILTER: #{b}"
+    # p b
+    Copro.delayMs(100) #add delay
+    @i2c.write(DEV_ADDR, CMD_MEASURE)
+    # puts "After MEASURE: #{c}"
+    # p c
+    Copro.delayMs(100) #add delay
   end
 
   def on()
@@ -78,38 +78,23 @@ end
     # @i2c.write(DEV_ADDR, [0x00])
     # val = @i2c.read(DEV_ADDR, 1)
     # p val
-    @i2c.write(DEV_ADDR, [0x00])
-    id = @i2c.read(DEV_ADDR, 1)
-    puts "0xAD?"
-    p id  # ADXL367なら 0xAD が返るはず
+    # @i2c.write(DEV_ADDR, [0x00])
+    # id = @i2c.read(DEV_ADDR, 1)
+    # puts "0xAD?"
+    # p id  # ADXL367なら 0xAD が返るはず
 
     # POWER_CTL = 0x03 にして測定モードへ（bit0=1）
-    @i2c.write(DEV_ADDR, [0x2D, 0x03])
-    # POWER_CTL (0x2D) を読む
-    @i2c.write(DEV_ADDR, [0x2D])
-    pctl = @i2c.read(DEV_ADDR,1)
+    # @i2c.write(DEV_ADDR, [0x2D, 0x03])
+    # # POWER_CTL (0x2D) を読む
+    # @i2c.write(DEV_ADDR, [0x2D])
+    # pctl = @i2c.read(DEV_ADDR,1)
     
-    puts "POWER_CTL:"
-    p pctl  # measure入れてるなら bit が立つ→ 0x03 になった
+    # puts "POWER_CTL:"
+    # p pctl  # measure入れてるなら bit が立つ→ 0x03 になった
 
     @i2c.write(DEV_ADDR, [REG_DATA])
-    v1 = @i2c.read(DEV_ADDR, 6)
-    sleep 0.05
-    @i2c.write(DEV_ADDR, [REG_DATA])
-    v2 = @i2c.read(DEV_ADDR, 6)
-
-    p v1
-    p v2
-
-    puts "a"
-    @i2c.write(DEV_ADDR, [REG_DATA])
-    puts "b"
     #Copro.delayMs(1000)
-    puts "c"
     val = @i2c.read(DEV_ADDR, 6)
-    p val
-    p val.size
-    puts "d"
     return nil if val.nil? || val.size < 6
     ADXLResult.new(conv(val, 0), conv(val, 2), conv(val, 4))
   end
@@ -136,30 +121,31 @@ gpio_state = false
 # Copro.gpio_output 1
 # Copro.gpio(1, true)
 # Copro.delayMs(100) # Wait for sensor to boot
-puts "Initializing I2C and ADXL..."
+# puts "Initializing I2C and ADXL..."
 i2c = I2C.new()
-puts "Initializing ADXL"
+# puts "Initializing ADXL"
 acc = ADXL.new(i2c)
-puts "acc = #{acc}"
-p acc
-puts "ADXL Initialized"
+# puts "acc = #{acc}"
+# p acc
+# puts "ADXL Initialized"
 acc.on()
-puts "acc.on() called"
+# puts "acc.on() called"
 # Copro.gpio(1, false)
 
-puts "Starting Pedometer (rl) - Unified Algorithm"
+# puts "Starting Pedometer (rl) - Unified Algorithm"
 
 # Copro.gpio_output 1
 # debug---------------------
 # === Main Loop (LP Core) ===
 # Copro.sleep_and_run do
-while true do
+for num in 1..5 do
   puts "start-loop"
   v = acc.read()
-  puts "read acc"
-  puts "v = #{v}"
-  p v
+  # puts "read acc"
+  # puts "v = #{v}"
+  # p v
   if v
+    puts "Got Accel Data: x=#{v.x} y=#{v.y} z=#{v.z}"
     # Magnitude
     val_x = v.x.abs
     val_y = v.y.abs
@@ -174,12 +160,15 @@ while true do
     
     filtered = ema_mag
     samples_since_change += 1
-
+    puts "samples_since_change: #{samples_since_change}"
+    puts "ema_mag: #{ema_mag}, max_peak: #{max_peak}"
     if looking_for_max
       if filtered > max_peak
+        puts "a"
         max_peak = filtered
         samples_since_change = 0
       elsif samples_since_change > 5 && (max_peak - filtered) > 500
+        puts "b"
         # Max Peak Detected
         looking_for_max = false
         min_peak = filtered
@@ -187,31 +176,38 @@ while true do
       end
     else
       if filtered < min_peak
+        puts "c"
         min_peak = filtered
         samples_since_change = 0
       elsif samples_since_change > 5 && (filtered - min_peak) > 500
+        puts "d"
         # Min Peak (Valley) Detected -> Step Cycle Complete
         peak_diff = max_peak - min_peak
         mid_point = (max_peak + min_peak) / 2
         
         # Update Dynamic Threshold
         if dynamic_thresh == 0
+          puts "e"
           dynamic_thresh = mid_point
         else
+          puts "f"
           dynamic_thresh = (dynamic_thresh * 3 + mid_point) / 4
         end
         
         # Validation
-        # p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
+        p "diff: #{peak_diff} min: #{MIN_SENSITIVITY}"
         if peak_diff > MIN_SENSITIVITY
           if reg_mode
+            puts "g"
             step_count += 1
             gpio_state = !gpio_state
             Copro.gpio(1, gpio_state)
             puts "Step! Total: #{step_count}"
           else
+            puts "h"
             consec_steps += 1
             if consec_steps >= REGULATION_STEPS
+              puts "i"
               reg_mode = true
               step_count += consec_steps
               consec_steps = 0
@@ -238,10 +234,10 @@ while true do
     end
     puts "mag: #{mag} ema: #{ema_mag} filt: #{filtered} max: #{max_peak} min: #{min_peak} thresh: #{dynamic_thresh}"
   end
-  
-  Copro.delayMs(1000) # 50Hz
+  # Copro.delayMs(20) # 50Hz
   puts "end-loop"
 end
+print("end\n")
 # end
 
 
