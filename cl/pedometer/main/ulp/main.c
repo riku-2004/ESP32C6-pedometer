@@ -16,8 +16,7 @@
 /* ===== パラメータ ===== */
 #define MIN_SENSITIVITY 2000 // 最小感度（ノイズ対策）
 #define STEP_TIMEOUT 50      // 1秒 (50 * 20ms) - ピーク検出タイムアウト
-#define REGULATION_STEPS                                                       \
-4 // レギュレーションモード開始歩数（
+#define REGULATION_STEPS 4 // レギュレーションモード開始歩数（
 
 /* ===== 共有変数 ===== */
 volatile uint32_t step_count = 0;
@@ -39,13 +38,17 @@ static int consec_steps = 0;
 /* ===== ヘルパー関数 ===== */
 void delay_ms_busy(uint32_t ms) { ulp_lp_core_delay_us(ms * 1000); }
 
+// int conv(uint8_t *ary, int base) {
+//   // 16bit符号付き整数への変換
+//   int val = (((int)ary[base] << 8) | ary[base + 1]);
+//   val >>= 2; // 14bit化
+//   if (val & 0x2000)
+//     val |= 0xFFFFC000; // 符号拡張
+//   return val;
+// }
+//シフト演算で高速化する
 int conv(uint8_t *ary, int base) {
-  // 14bit符号付き整数への変換
-  int val = (((int)ary[base] << 8) | ary[base + 1]);
-  val >>= 2; // 14bit化
-  if (val & 0x2000)
-    val |= 0xFFFFC000; // 符号拡張
-  return val;
+    (((int)ary[base] << 24) | (ary[base + 1] << 16)) >> 18;
 }
 
 /* ===== センサー読み取り ===== */

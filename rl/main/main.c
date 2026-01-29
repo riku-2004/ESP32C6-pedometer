@@ -37,8 +37,7 @@ static uint8_t memory_pool[MRBC_MEMORY_SIZE];
 #define CHECK_WAKEUP_OVERHEAD 0
 void app_main(void)
 {
-// setvbuf(stdout, NULL, _IONBF, 0);
-  vTaskDelay(pdMS_TO_TICKS(2000)); // monitor再接続待ち
+// setvbuf(stdout, NULL, _IONBF, 0)
 
 //   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
 //   esp_err_t r = esp_sleep_enable_timer_wakeup(3ULL * 1000 * 1000); // 3秒
