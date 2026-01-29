@@ -57,7 +57,7 @@ class ADXL
   #   ((ary.getbyte(base) << 26) >> 18) + ary.getbyte(base+1)
   # end
   def conv(ary, base)
-    ((ary.getbyte(base) <<24) | (ary.getbyte(base) << 16)) >> 18
+    ((ary.getbyte(base) <<24) | (ary.getbyte(base + 1) << 16)) >> 18
   end
 
 #   def conv(str, base)
