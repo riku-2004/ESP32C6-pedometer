@@ -54,9 +54,6 @@ void app_main(void)
         };
         lp_i2c_init(); // I2C Init with Pullups
         lp_core_init();
-
-
-
         ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
 
         rtc_gpio_set_level(1, 0);
@@ -71,7 +68,7 @@ void app_main(void)
 
     // 定期的なタイマーWakeup（30秒ごと）とULPからのWakeupを両方有効化
     //起きたタイミングで歩数を出力する
-    // printf("Total Steps: %lu\n", ulp_step_count);
+    printf("Total Steps: %lu\n", ulp_step_count);
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(30 * 1000000)); // 30秒
     ESP_ERROR_CHECK(esp_sleep_enable_ulp_wakeup());
     esp_deep_sleep_start();
