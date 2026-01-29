@@ -209,7 +209,7 @@ mrbc_send_inst_bufs_return_t send_inst_bufs(mrbc_profile_profiler * prof, mrbc_p
   }
   *((CLASS_IDENTIFIER_TYPE *)copro_allocated) = MRBC_COPRO_TT_CODE;
   copro_allocated += sizeof(CLASS_IDENTIFIER_TYPE);
-  printf("[DEBUG send_inst_bufs] memcpy dst=%p, size=%d\n", copro_allocated, (int)actualSize);
+  // printf("[DEBUG send_inst_bufs] memcpy dst=%p, size=%d\n", copro_allocated, (int)actualSize);
   memcpy(copro_allocated, prof->buf.head, actualSize);
 
   prof->buf.cur = prof->buf.head;
