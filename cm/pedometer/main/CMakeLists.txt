@@ -1,3 +1,4 @@
 idf_component_register(SRCS "main.c"
                     INCLUDE_DIRS "."
-                    REQUIRES driver esp_driver_i2c esp_driver_gpio)
+                    REQUIRES ulp)
+ulp_embed_binary(ulp_core_main "ulp/main.c" "main.c")

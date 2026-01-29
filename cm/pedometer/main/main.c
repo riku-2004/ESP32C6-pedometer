@@ -13,15 +13,21 @@
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
+#include "lp_core_i2c.h"
+#include "ulp_lp_core.h"
+#include "esp_sleep.h"
+#include "driver/rtc_io.h"
 
 static const char *TAG = "PEDOMETER_CM";
+static int32_t debug_filtered = 0;
+static int32_t debug_peak_diff = 0;
 
 /* ===== I2C設定 ===== */
 #define I2C_PORT    I2C_NUM_0
 #define I2C_SDA     GPIO_NUM_6
 #define I2C_SCL     GPIO_NUM_7
 #define I2C_FREQ    100000
-#define ADXL367_ADDR  0x1D
+#define ADXL367_I2C_ADDR 0x1D
 
 /* ===== GPIOマーカー ===== */
 #define STEP_MARKER_GPIO GPIO_NUM_1
@@ -49,7 +55,9 @@ static bool reg_mode = false;
 static int consec_steps = 0;
 static bool gpio_state = false;
 
-/* ===== I2C 初期化 ===== */
+
+
+/* ===== I2C 初期化 =====(メインプロセッサ版) */
 // static esp_err_t i2c_init(void) {
 //     i2c_master_bus_config_t bus_cfg = {
 //         .i2c_port = I2C_PORT,
@@ -69,31 +77,26 @@ static bool gpio_state = false;
 //     };
 //     return i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
 // }
-int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
-    uint8_t reg = 0x0E;
-    uint8_t data_rd[6];
-    if (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, 
-            &reg, 1, 5000) != ESP_OK) return 1;
-    delay_ms_busy(1);
-    if (lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, 
-            data_rd, 6, 5000) != ESP_OK) return 2;
-    *x = conv(data_rd, 0);
-    *y = conv(data_rd, 2);
-    *z = conv(data_rd, 4);
-    return 0;
+extern const uint8_t lp_core_main_bin_start[] asm("_binary_ulp_core_main_bin_start");
+extern const uint8_t lp_core_main_bin_end[]   asm("_binary_ulp_core_main_bin_end");
+
+static void lp_core_init(void)
+{
+    ESP_ERROR_CHECK(ulp_lp_core_load_binary(lp_core_main_bin_start, (lp_core_main_bin_end - lp_core_main_bin_start)));
 }
 
-
-/* ===== GPIO 初期化 ===== */
-static void gpio_marker_init(void) {
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << STEP_MARKER_GPIO),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+static void lp_i2c_init(void)
+{
+    /* Pullup Enabled! */
+    const lp_core_i2c_cfg_t i2c_cfg = {
+        .i2c_pin_cfg.sda_io_num = GPIO_NUM_6,
+        .i2c_pin_cfg.scl_io_num = GPIO_NUM_7,
+        .i2c_pin_cfg.sda_pullup_en = true,   // ENABLED
+        .i2c_pin_cfg.scl_pullup_en = true,   // ENABLED
+        .i2c_timing_cfg.clk_speed_hz = 20000,
+        LP_I2C_DEFAULT_SRC_CLK()
     };
-    gpio_config(&io_conf);
-    gpio_set_level(STEP_MARKER_GPIO, 0);
+    ESP_ERROR_CHECK(lp_core_i2c_master_init(LP_I2C_NUM_0, &i2c_cfg));
 }
 
 /* ===== delayMs ===== */
@@ -101,28 +104,46 @@ static void delayMs(int ms) {
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
-/* ===== データ変換 ===== */
-static int conv(uint8_t *ary, int base) {
-    int val = (((int)ary[base] << 8) | ary[base+1]);
-    val >>= 2; // 14bit化
-    if (val & 0x2000) val |= 0xFFFFC000; // 符号拡張
+extern int ulp_lp_core_i2c_master_write_to_device(int, uint16_t, const uint8_t *, size_t, int32_t);
+extern int ulp_lp_core_i2c_master_read_from_device(int, uint16_t, uint8_t *, size_t, int32_t);
+//シフト演算で高速化する
+int conv(uint8_t *ary, int base) {
+    int val = (((int)ary[base] << 24) | (ary[base + 1] << 16)) >> 18;
     return val;
 }
 
 /* ===== センサー読み取り ===== */
-static int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
-    uint8_t reg = 0x0E;
-    uint8_t data_rd[6];
-    
-    if (i2c_master_transmit(dev_handle, &reg, 1, 100) != ESP_OK) return 1;
-    delayMs(1);
-    if (i2c_master_receive(dev_handle, data_rd, 6, 100) != ESP_OK) return 2;
-    
-    *x = conv(data_rd, 0);
-    *y = conv(data_rd, 2);
-    *z = conv(data_rd, 4);
-    return 0;
+int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
+  uint8_t reg = 0x0E;
+  uint8_t data_rd[6];
+  if (ulp_lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, &reg, 1, 5000) != ESP_OK)
+    return 1;
+  delayMs(10);
+  if (ulp_lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, data_rd, 6, 5000) != ESP_OK)
+    return 2;
+  *x = conv(data_rd, 0);
+  *y = conv(data_rd, 2);
+  *z = conv(data_rd, 4);
+  return 0;
 }
+
+//↑移植済み
+
+
+
+/* ===== GPIO 初期化 ===== */
+// static void gpio_marker_init(void) {
+//     gpio_config_t io_conf = {
+//         .pin_bit_mask = (1ULL << STEP_MARKER_GPIO),
+//         .mode = GPIO_MODE_OUTPUT,
+//         .pull_up_en = GPIO_PULLUP_DISABLE,
+//         .pull_down_en = GPIO_PULLDOWN_DISABLE,
+//     };
+//     gpio_config(&io_conf);
+//     gpio_set_level(STEP_MARKER_GPIO, 0);
+// }
+
+
 
 /* ===== センサー初期化 ===== */
 static void sensor_init(void) {
@@ -130,110 +151,123 @@ static void sensor_init(void) {
     uint8_t cmd2[] = {0x2C, 0x13}; // 100Hz
     uint8_t cmd3[] = {0x2D, 0x02}; // Measure
     
-    i2c_master_transmit(dev_handle, cmd1, 2, 100);
+    ulp_lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd1, 2, 500);
     delayMs(10);
-    i2c_master_transmit(dev_handle, cmd2, 2, 100);
+    ulp_lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd2, 2, 500);
     delayMs(10);
-    i2c_master_transmit(dev_handle, cmd3, 2, 100);
+    ulp_lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, cmd3, 2, 500);
     delayMs(50);
     
     ESP_LOGI(TAG, "ADXL367 initialized");
 }
 
-/* ===== 歩数検出ロジック (clと同一) ===== */
-static void process_sample(int32_t mag) {
-    // EMA LPF
-    if (ema_mag == 0) ema_mag = mag;
-    else ema_mag = (ema_mag * 3 + mag) / 4;
-    
-    int32_t filtered = ema_mag;
-    samples_since_change++;
+/* ===== 歩数検出ロジック (軽量版) ===== */
+void process_sample(int32_t mag) {
+  if (ema_mag == 0)
+    ema_mag = mag;
+  else
+    ema_mag = (ema_mag * 3 + mag) / 4;
 
-    if (looking_for_max) {
-        if (filtered > max_peak) {
-            max_peak = filtered;
-            samples_since_change = 0;
-        } else if (samples_since_change > 5 && (max_peak - filtered) > 500) {
-            looking_for_max = false;
-            min_peak = filtered;
-            samples_since_change = 0;
-        }
-    } else {
-        if (filtered < min_peak) {
-            min_peak = filtered;
-            samples_since_change = 0;
-        } else if (samples_since_change > 5 && (filtered - min_peak) > 500) {
-            // ボトム確定、1サイクル完了
-            int32_t peak_diff = max_peak - min_peak;
-            int32_t mid_point = (max_peak + min_peak) / 2;
-            
-            // 動的閾値更新
-            if (dynamic_thresh == 0) dynamic_thresh = mid_point;
-            else dynamic_thresh = (dynamic_thresh * 3 + mid_point) / 4;
-            
-            // 歩行判定
-            if (peak_diff > MIN_SENSITIVITY) {
-                if (reg_mode) {
-                    step_count++;
-                    ESP_LOGI(TAG, "Step! Total: %lu", step_count);
-                    
-                    gpio_state = !gpio_state;
-                    gpio_set_level(STEP_MARKER_GPIO, gpio_state);
+  int32_t filtered = ema_mag;
+  debug_filtered = filtered;
 
-                } else {
-                    consec_steps++;
-                    if (consec_steps >= REGULATION_STEPS) {
-                        reg_mode = true;
-                        step_count += consec_steps;
-                        consec_steps = 0;
-                        ESP_LOGI(TAG, "Regulation Mode ON! Steps: %lu", step_count);
-                    }
-                }
-            } else {
-                if (!reg_mode) consec_steps = 0;
-            }
-            
-            looking_for_max = true;
-            max_peak = filtered;
-            samples_since_change = 0;
+  samples_since_change++;
+
+  if (looking_for_max) {
+    if (filtered > max_peak) {
+      max_peak = filtered;
+      samples_since_change = 0;
+    } else if (samples_since_change > 5 && (max_peak - filtered) > 500) {
+      // ピーク確定とみなす
+      looking_for_max = false;
+      min_peak = filtered; // 最小値探索開始初期値
+      samples_since_change = 0;
+    }
+  } else {
+    // Looking for min
+    if (filtered < min_peak) {
+      min_peak = filtered;
+      samples_since_change = 0;
+    } else if (samples_since_change > 5 && (filtered - min_peak) > 500) {
+      // ボトム確定、1歩のサイクル完了
+      int32_t peak_diff = max_peak - min_peak;
+      debug_peak_diff = peak_diff; // Debug output
+      int32_t mid_point = (max_peak + min_peak) / 2;
+
+      // 動的閾値の更新 (EMA)
+      if (dynamic_thresh == 0)
+        dynamic_thresh = mid_point;
+      else
+        dynamic_thresh = (dynamic_thresh * 3 + mid_point) / 4;
+
+      // 歩行判定
+      if (peak_diff > MIN_SENSITIVITY) {
+        // 有効な波形
+        if (reg_mode) {
+          step_count++;
+        } else {
+          consec_steps++;
+          if (consec_steps >= REGULATION_STEPS) {
+            reg_mode = true;
+            step_count += consec_steps;
+            consec_steps = 0;
+          }
         }
+      } else {
+        // ノイズ
+        if (!reg_mode)
+          consec_steps = 0;
+      }
+
+      looking_for_max = true;
+      max_peak = filtered;
+      samples_since_change = 0;
     }
-    
-    if (samples_since_change > STEP_TIMEOUT) {
-        looking_for_max = true;
-        max_peak = filtered;
-        if (!reg_mode) consec_steps = 0;
-    }
+  }
+
+  // タイムアウト処理
+  if (samples_since_change > STEP_TIMEOUT) {
+    looking_for_max = true;
+    max_peak = filtered;
+    if (!reg_mode)
+      consec_steps = 0;
+  }
 }
 
+int app_app_main(void) {
+  int32_t x, y, z;
+  sensor_init();
+
+  while (1) {
+    if (sensor_read(&x, &y, &z) == 0) {
+      // 絶対値和
+      int32_t mag = abs(x) + abs(y) + abs(z);
+    //   debug_mag = mag;
+      process_sample(mag);
+    }
+    // debug_cycles++;
+    delayMs(20); // 50Hz
+  }
+  return 0;
+}
 /* ===== メインループ ===== */
 void app_main(void) {
-    int32_t x, y, z;
-    
+    rtc_gpio_init(1);
+    rtc_gpio_set_direction(1, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_pulldown_dis(1);
+    rtc_gpio_pullup_dis(1);
+    rtc_gpio_set_level(1, 1);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    lp_core_init();
+    lp_i2c_init();
+    // ulp_lp_core_cfg_t cfg = {
+    //     .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU,
+    // };
+    // ESP_ERROR_CHECK(ulp_lp_core_run(&cfg));
+
     ESP_LOGI(TAG, "Starting Pedometer (Main Processor) - Unified Algorithm");
-    
-    if (i2c_init() != ESP_OK) {
-        ESP_LOGE(TAG, "I2C init failed");
-        return;
-    }
-    
-    gpio_marker_init();
-    sensor_init();
-    
-    ESP_LOGI(TAG, "Running at 50Hz");
-    
-    while (1) {
-        if (sensor_read(&x, &y, &z) == 0) {
-            int32_t mag = abs(x) + abs(y) + abs(z);
-            process_sample(mag);
-            
-            static int debug_cnt = 0;
-            if (++debug_cnt >= 50) {
-                ESP_LOGI(TAG, "Mag=%ld, Steps=%lu", mag, step_count);
-                debug_cnt = 0;
-            }
-        }
-        
-        delayMs(SAMPLE_PERIOD_MS);
-    }
+
+    app_app_main();
+    ESP_LOGI(TAG, "Total Steps: %d", step_count);
+    delayMs(SAMPLE_PERIOD_MS);
 }
