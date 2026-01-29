@@ -48,19 +48,18 @@ void delay_ms_busy(uint32_t ms) { ulp_lp_core_delay_us(ms * 1000); }
 // }
 //シフト演算で高速化する
 int conv(uint8_t *ary, int base) {
-    (((int)ary[base] << 24) | (ary[base + 1] << 16)) >> 18;
+    int val = (((int)ary[base] << 24) | (ary[base + 1] << 16)) >> 18;
+    return val;
 }
 
 /* ===== センサー読み取り ===== */
 int sensor_read(int32_t *x, int32_t *y, int32_t *z) {
   uint8_t reg = 0x0E;
   uint8_t data_rd[6];
-  if (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, &reg,
-                                         1, 5000) != ESP_OK)
+  if (lp_core_i2c_master_write_to_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, &reg, 1, 5000) != ESP_OK)
     return 1;
   delay_ms_busy(1);
-  if (lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR,
-                                          data_rd, 6, 5000) != ESP_OK)
+  if (lp_core_i2c_master_read_from_device(LP_I2C_NUM_0, ADXL367_I2C_ADDR, data_rd, 6, 5000) != ESP_OK)
     return 2;
   *x = conv(data_rd, 0);
   *y = conv(data_rd, 2);
@@ -86,9 +85,6 @@ void sensor_init(void) {
 
 /* ===== 歩数検出ロジック (軽量版) ===== */
 void process_sample(int32_t mag) {
-  // 簡易LPF (指数移動平均) alpha=0.5 (位)
-  // ema_mag = (ema_mag + mag) / 2;
-  // もう少し強く: ema = (3*ema + mag)/4
   if (ema_mag == 0)
     ema_mag = mag;
   else
